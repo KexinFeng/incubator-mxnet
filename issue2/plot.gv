@@ -1,0 +1,9 @@
+digraph plot {
+	".Inputs.Input1" [label=".Inputs.Input1" fillcolor="#8dd3c7" fixedsize=true height=0.8034 shape=oval style=filled width=1.3]
+	".Inputs.Input2" [label=".Inputs.Input2" fillcolor="#8dd3c7" fixedsize=true height=0.8034 shape=oval style=filled width=1.3]
+	".$0" [label=".$0" fillcolor="#fccde5" fixedsize=true height=0.8034 shape=box style=filled width=1.3]
+	".Outputs.Output" [label=".Outputs.Output" fillcolor="#fccde5" fixedsize=true height=0.8034 shape=box style=filled width=1.3]
+	".$0" -> ".Inputs.Input1" [label="" arrowtail=open dir=back]
+	".$0" -> ".Inputs.Input2" [label="" arrowtail=open dir=back]
+	".Outputs.Output" -> ".$0" [label="" arrowtail=open dir=back]
+}
