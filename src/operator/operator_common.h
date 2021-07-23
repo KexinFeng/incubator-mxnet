@@ -361,7 +361,7 @@ inline bool dispatch_fallback(StorageTypeVector* stypes, DispatchMode* dispatch)
   return true;
 }
 
-inline std::vector<nnvm::NodeEntry>CreateNodeEntries(
+inline std::vector<nnvm::NodeEntry> CreateNodeEntries(
   nnvm::ObjectPtr pNode,
   const std::vector<nnvm::NodeEntry>* pOgrads = nullptr,
   const std::vector<nnvm::NodeEntry>* pInputs = nullptr) {
