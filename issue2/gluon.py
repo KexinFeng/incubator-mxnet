@@ -2,6 +2,11 @@ import mxnet as mx
 from mxnet.gluon import HybridBlock
 from mxnet import autograd as ag
 
+# This is bug free, since `_api_internal.invoke(CachedOp.handle, ...)` 
+# is called.
+# `unit_test.py` has bug when `static_alloc` is set in `_bind`. 
+# It calls `_LIB.MXInvokeCachedOp`
+
 class AddBlock(HybridBlock):
     def __init__(self):
         super(AddBlock, self).__init__()

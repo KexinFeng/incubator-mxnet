@@ -1,3 +1,8 @@
+# This is bug free, since `_api_internal.invoke(CachedOp.handle, ...)` 
+# is called.
+# `unit_test.py` has bug when `static_alloc` is set in `_bind`. 
+# It calls `_LIB.MXInvokeCachedOp`
+
 import mxnet as mx
 from mxnet.gluon import HybridBlock
 from mxnet import autograd as ag
@@ -12,7 +17,7 @@ class AddBlock(HybridBlock):
 
 add = AddBlock()
 add.initialize()
-add.hybridize(static_alloc=False)
+add.hybridize(static_alloc=True)
 
 x = mx.np.array([0.4])
 y = mx.np.array([0.5])
@@ -24,11 +29,12 @@ ag.set_recording(True)
 out = add(x, y)
     # out = add(x, y)
 ag.set_recording(False)
+# print(out)
 out.backward()
 
 print(x, y, out)
 print(x.grad)
 print(y.grad)
-print(out.grad)
+# print(out.grad)
 # print("\nINPUT 1: {}\nINPUT 2: {}\nOUTPUT: {}\nGRAD 1: {}\n"
 #     "GRAD 2: {}\n".format(x, y, out, x.grad, y.grad, out.grad))
