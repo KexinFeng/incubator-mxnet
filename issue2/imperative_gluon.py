@@ -9,7 +9,8 @@ from mxnet import autograd as ag
 
 class AddBlock(HybridBlock):
     def __init__(self):
-        super(AddBlock, self).__init__()
+        # super(AddBlock, self).__init__()
+        super().__init__()
     
     def forward(self, a, b):
         c = a + b
@@ -24,12 +25,9 @@ y = mx.np.array([0.5])
 x.attach_grad(grad_req='null')
 y.attach_grad(grad_req='write')
 
-ag.set_recording(True)
-# with ag.record():
-out = add(x, y)
-    # out = add(x, y)
-ag.set_recording(False)
-# print(out)
+with ag.record():
+    out = add(x, y)
+    
 out.backward()
 
 print(x, y, out)

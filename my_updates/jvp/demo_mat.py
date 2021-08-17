@@ -1,9 +1,10 @@
+
 # 80 sec for gdb attaching
 from mxnet import ndarray as nd
 from mxnet import autograd as ag
-x = nd.array([1,2,3,4])
+x = nd.array([[1,2],[3,4]])
 x.attach_grad()
-y = nd.array([5,6,7,8])
+y = nd.array([[5,6],[7,8]])
 y.attach_grad()
 
 with ag.record():
@@ -13,7 +14,7 @@ with ag.record():
 u.attach_grad()
 z.attach_grad()
 
-out_grad = nd.array([10, 10, 10, 10])
+out_grad = nd.array([[10, 10], [10, 10]])
 z.backward(out_grad, retain_graph=True)
 
 print('u', u.grad)
@@ -29,7 +30,7 @@ u.drop_grad()
 z.drop_grad()
 y.drop_grad()
 
-out_grad = nd.array([0.1, 0.1, 0.1, 0.1])
+out_grad = nd.array([[0.1, 0.1], [0.1, 0.1]])
 z.backward(out_grad)
 
 print('u', u.grad)

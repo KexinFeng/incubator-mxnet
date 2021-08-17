@@ -8,8 +8,8 @@ with ag.record():
     u = y.detach()
     z = x*u
 
-u.retain_grad()
-y.retain_grad()
+u.attach_grad()
+y.attach_grad()
 
 out_grad = nd.array([10, 10, 10, 10])
 z.backward(out_grad)
