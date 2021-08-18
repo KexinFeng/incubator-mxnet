@@ -64,9 +64,8 @@ def test_retain_grad_drop_grad_gluon2():
     z.backward()
     print(x.grad, y.grad, u.grad)
 
-    assert u.grad is None and z.grad is None
+    assert u.grad is None and z.grad is None and y.grad is None
     assert (x.grad == 2 * x * y).all()
-    assert y.grad is None
 
 if __name__ == '__main__':
     test_retain_grad_drop_grad_gluon()
