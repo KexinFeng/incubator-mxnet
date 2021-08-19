@@ -15,8 +15,8 @@ def test_drop_grad():
         u2 = u.detach()
         z = x*u2
 
-    ugrad = nd.ones(x.shape)*3
-    # ugrad = nd.zeros(x.shape)
+    # ugrad = nd.ones(x.shape)*3
+    ugrad = nd.zeros(x.shape)
     ag.mark_variables(u, ugrad)
 
     z.backward()

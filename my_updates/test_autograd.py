@@ -21,10 +21,10 @@ from mxnet.ndarray import zeros_like
 from mxnet.autograd import *
 from mxnet.test_utils import *
 
-# from common import xfail_when_nonstandard_decimal_separator
+from common import xfail_when_nonstandard_decimal_separator
 from mxnet.test_utils import environment
 
-# import pytest
+import pytest
 
 
 def grad_and_loss(func, argnum=None):
@@ -110,23 +110,23 @@ def autograd_assert(*args, **kwargs):
     for a, b in zip(grad_vals, grad_res):
         assert same(a.asnumpy(), b.asnumpy())
 
-# @xfail_when_nonstandard_decimal_separator
-# def test_unary_func():
-#     def check_unary_func(x):
-#         f_exp         = lambda x: nd.exp(x)
-#         f_exp_grad    = lambda x: [nd.exp(x)]
-#         autograd_assert(x, func=f_exp, grad_func=f_exp_grad)
-#         f_half        = lambda x: x/2
-#         f_half_grad   = lambda x: [nd.ones(x.shape) * 0.5]
-#         autograd_assert(x, func=f_half, grad_func=f_half_grad)
-#         f_square      = lambda x: x**2
-#         f_square_grad = lambda x: [2*x]
-#         autograd_assert(x, func=f_square, grad_func=f_square_grad)
-#     uniform = nd.uniform(shape=(4, 5))
-#     stypes = ['default', 'row_sparse', 'csr']
-#     with environment('MXNET_STORAGE_FALLBACK_LOG_VERBOSE', '0'):
-#         for stype in stypes:
-#             check_unary_func(uniform.tostype(stype))
+@xfail_when_nonstandard_decimal_separator
+def test_unary_func():
+    def check_unary_func(x):
+        f_exp         = lambda x: nd.exp(x)
+        f_exp_grad    = lambda x: [nd.exp(x)]
+        autograd_assert(x, func=f_exp, grad_func=f_exp_grad)
+        f_half        = lambda x: x/2
+        f_half_grad   = lambda x: [nd.ones(x.shape) * 0.5]
+        autograd_assert(x, func=f_half, grad_func=f_half_grad)
+        f_square      = lambda x: x**2
+        f_square_grad = lambda x: [2*x]
+        autograd_assert(x, func=f_square, grad_func=f_square_grad)
+    uniform = nd.uniform(shape=(4, 5))
+    stypes = ['default', 'row_sparse', 'csr']
+    with environment('MXNET_STORAGE_FALLBACK_LOG_VERBOSE', '0'):
+        for stype in stypes:
+            check_unary_func(uniform.tostype(stype))
 
 def test_binary_func():
     def check_binary_func(x, y):
@@ -336,157 +336,157 @@ def test_is_train():
         y = mx.nd.Dropout(x, p=0.5)
         assert y.asnumpy().max() == 2 and y.asnumpy().min() == 0
 
-# @pytest.mark.garbage_expected
-# def test_function():
-#     class func(Function):
-#         def forward(self, x, y):
-#             m = x / y
-#             n = x * y
-#             self.save_for_backward(x, y)
-#             return m, n
+@pytest.mark.garbage_expected
+def test_function():
+    class func(Function):
+        def forward(self, x, y):
+            m = x / y
+            n = x * y
+            self.save_for_backward(x, y)
+            return m, n
 
-#         def backward(self, dm, dn):
-#             x, y = self.saved_tensors
-#             dx = dm/y + dn*y
-#             dy = dn*x - dm * x / y / y
-#             return dx, dy
+        def backward(self, dm, dn):
+            x, y = self.saved_tensors
+            dx = dm/y + dn*y
+            dy = dn*x - dm * x / y / y
+            return dx, dy
 
-#     f = func()
-#     x = mx.nd.random.uniform(shape=(10,))
-#     x.attach_grad()
-#     y = mx.nd.random.uniform(shape=(10,))
-#     y.attach_grad()
-#     with record():
-#         m, n = f(x, y)
-#         backward([m, n])
+    f = func()
+    x = mx.nd.random.uniform(shape=(10,))
+    x.attach_grad()
+    y = mx.nd.random.uniform(shape=(10,))
+    y.attach_grad()
+    with record():
+        m, n = f(x, y)
+        backward([m, n])
 
-#     dx1 = x.grad.asnumpy()
-#     dy1 = y.grad.asnumpy()
+    dx1 = x.grad.asnumpy()
+    dy1 = y.grad.asnumpy()
 
-#     with record():
-#         backward([x/y, x*y])
+    with record():
+        backward([x/y, x*y])
 
-#     # Non-zero atol required, as exposed by seed 630179191
-#     atol = 1e-6
-#     assert_almost_equal(x.grad.asnumpy(), dx1, atol=atol)
-#     assert_almost_equal(y.grad.asnumpy(), dy1, atol=atol)
-
-
-# @pytest.mark.garbage_expected
-# def test_function1():
-#     class Foo(mx.autograd.Function):
-#         def __init__(self):
-#             super(Foo, self).__init__()
-
-#         def forward(self, X):
-#             return X + 1;
-
-#         def backward(self, dY):
-#             return dY
-
-#     with mx.autograd.record():
-#         X = mx.nd.zeros((3, 4))
-#         #X.attach_grad()  # uncommenting this line works
-#         for i in range(5):
-#             f = Foo()
-#             X = f(X)
-#         X.wait_to_read()
+    # Non-zero atol required, as exposed by seed 630179191
+    atol = 1e-6
+    assert_almost_equal(x.grad.asnumpy(), dx1, atol=atol)
+    assert_almost_equal(y.grad.asnumpy(), dy1, atol=atol)
 
 
-# @pytest.mark.garbage_expected
-# @use_np
-# def test_np_function():
-#     class func(Function):
-#         def forward(self, x, y):
-#             m = x / y
-#             n = x * y
-#             self.save_for_backward(x, y)
-#             return m, n
+@pytest.mark.garbage_expected
+def test_function1():
+    class Foo(mx.autograd.Function):
+        def __init__(self):
+            super(Foo, self).__init__()
 
-#         def backward(self, dm, dn):
-#             x, y = self.saved_tensors
-#             dx = dm/y + dn*y
-#             dy = dn*x - dm * x / y / y
-#             return dx, dy
+        def forward(self, X):
+            return X + 1;
 
-#     f = func()
-#     x = mx.np.random.uniform(size=(10,))
-#     x.attach_grad()
-#     y = mx.np.random.uniform(size=(10,))
-#     y.attach_grad()
-#     with record():
-#         m, n = f(x, y)
-#         backward([m, n])
+        def backward(self, dY):
+            return dY
 
-#     dx1 = x.grad.asnumpy()
-#     dy1 = y.grad.asnumpy()
-
-#     with record():
-#         backward([x/y, x*y])
-
-#     # Non-zero atol required, as exposed by seed 630179191
-#     atol = 1e-6
-#     assert_almost_equal(x.grad.asnumpy(), dx1, atol=atol)
-#     assert_almost_equal(y.grad.asnumpy(), dy1, atol=atol)
+    with mx.autograd.record():
+        X = mx.nd.zeros((3, 4))
+        #X.attach_grad()  # uncommenting this line works
+        for i in range(5):
+            f = Foo()
+            X = f(X)
+        X.wait_to_read()
 
 
-# @pytest.mark.garbage_expected
-# @use_np
-# def test_np_function1():
-#     class Foo(mx.autograd.Function):
-#         def __init__(self):
-#             super(Foo, self).__init__()
+@pytest.mark.garbage_expected
+@use_np
+def test_np_function():
+    class func(Function):
+        def forward(self, x, y):
+            m = x / y
+            n = x * y
+            self.save_for_backward(x, y)
+            return m, n
 
-#         def forward(self, X):
-#             return X + 1;
+        def backward(self, dm, dn):
+            x, y = self.saved_tensors
+            dx = dm/y + dn*y
+            dy = dn*x - dm * x / y / y
+            return dx, dy
 
-#         def backward(self, dY):
-#             return dY
+    f = func()
+    x = mx.np.random.uniform(size=(10,))
+    x.attach_grad()
+    y = mx.np.random.uniform(size=(10,))
+    y.attach_grad()
+    with record():
+        m, n = f(x, y)
+        backward([m, n])
 
-#     with mx.autograd.record():
-#         X = mx.np.zeros((3, 4))
-#         #X.attach_grad()  # uncommenting this line works
-#         for i in range(5):
-#             f = Foo()
-#             X = f(X)
-#         X.wait_to_read()
+    dx1 = x.grad.asnumpy()
+    dy1 = y.grad.asnumpy()
+
+    with record():
+        backward([x/y, x*y])
+
+    # Non-zero atol required, as exposed by seed 630179191
+    atol = 1e-6
+    assert_almost_equal(x.grad.asnumpy(), dx1, atol=atol)
+    assert_almost_equal(y.grad.asnumpy(), dy1, atol=atol)
 
 
-# @pytest.mark.garbage_expected
-# def test_get_symbol():
-#     x = mx.nd.ones((1,))
-#     x.attach_grad()
-#     with record():
-#         y = x*x + 2*x - 1
-#     assert len(get_symbol(y).list_arguments()) == 1
+@pytest.mark.garbage_expected
+@use_np
+def test_np_function1():
+    class Foo(mx.autograd.Function):
+        def __init__(self):
+            super(Foo, self).__init__()
 
-#     z = mx.nd.ones((1,))
-#     z.attach_grad()
-#     with record():
-#         y = x*x + 2*z - 1
-#     assert len(get_symbol(y).list_arguments()) == 2
+        def forward(self, X):
+            return X + 1;
 
-# @pytest.mark.garbage_expected
-# def test_grad_with_stype():
-#     def check_grad_with_stype(array_stype, grad_stype, expected_stype):
-#         x = mx.nd.zeros((1, 1), stype=array_stype)
-#         x.attach_grad(stype=grad_stype)
-#         # check grad attached
-#         assert x.grad.stype == expected_stype
-#         y = x.detach()
-#         # check array detached
-#         assert y.stype == array_stype
+        def backward(self, dY):
+            return dY
 
-#     stypes = ['default', 'csr', 'row_sparse']
-#     for stype in stypes:
-#         # check the default stype of the gradient (same as the array stype)
-#         check_grad_with_stype(stype, None, stype)
-#         for grad_stype in stypes:
-#             # check the stype of the gradient when provided
-#             check_grad_with_stype(stype, grad_stype, grad_stype)
+    with mx.autograd.record():
+        X = mx.np.zeros((3, 4))
+        #X.attach_grad()  # uncommenting this line works
+        for i in range(5):
+            f = Foo()
+            X = f(X)
+        X.wait_to_read()
 
-# @pytest.mark.garbage_expected
-# def test_sparse_dot_grad():
+
+@pytest.mark.garbage_expected
+def test_get_symbol():
+    x = mx.nd.ones((1,))
+    x.attach_grad()
+    with record():
+        y = x*x + 2*x - 1
+    assert len(get_symbol(y).list_arguments()) == 1
+
+    z = mx.nd.ones((1,))
+    z.attach_grad()
+    with record():
+        y = x*x + 2*z - 1
+    assert len(get_symbol(y).list_arguments()) == 2
+
+@pytest.mark.garbage_expected
+def test_grad_with_stype():
+    def check_grad_with_stype(array_stype, grad_stype, expected_stype):
+        x = mx.nd.zeros((1, 1), stype=array_stype)
+        x.attach_grad(stype=grad_stype)
+        # check grad attached
+        assert x.grad.stype == expected_stype
+        y = x.detach()
+        # check array detached
+        assert y.stype == array_stype
+
+    stypes = ['default', 'csr', 'row_sparse']
+    for stype in stypes:
+        # check the default stype of the gradient (same as the array stype)
+        check_grad_with_stype(stype, None, stype)
+        for grad_stype in stypes:
+            # check the stype of the gradient when provided
+            check_grad_with_stype(stype, grad_stype, grad_stype)
+
+@pytest.mark.garbage_expected
+def test_sparse_dot_grad():
     def check_sparse_dot_grad(rhs):
         lhs = rand_ndarray((2, 8), 'csr')
         with mx.autograd.record():
