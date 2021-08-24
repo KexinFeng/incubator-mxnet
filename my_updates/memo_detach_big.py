@@ -1,7 +1,7 @@
 from mxnet import ndarray as nd
 from mxnet import autograd as ag
 
-# @profile
+@profile
 def test_drop_grad():
     x = nd.ones((int(1e3), int(1e4)))*2
     x.attach_grad()
@@ -11,22 +11,22 @@ def test_drop_grad():
     with ag.record():
         u = x*y
         u2 = u.detach()
-        ztmp = x*u2
-        z = ztmp*x
+        z = x * u2
 
-    # ugrad = nd.ones(x.shape)*3
-    # ugrad = nd.zeros(x.shape)
-    # ag.mark_variables(u, ugrad)
-    u.attach_grad()
+    ugrad = nd.ones(x.shape)*3
+    ag.mark_variables(u, ugrad)
+    # u.attach_grad()
 
-    # del ztmp, u2
-    # del ugrad
-    z.backward()
-    
-    out_grad = nd.ones(x.shape)*5
-    u.backward()
-    del u
-    del x
+    z.backward()  # z_ograds memo is allocated and released
+    u.backward()  # u_ograds memo is allocated and attached to
+                  # u.info.out_grads while the original 
+                  # u.info.out_grads is not released since it's 
+                  # referenced by ugrad
+    del x  # release both the Chunk in x (info.outputs) and 
+           # info.out_grads 
+    print(u.grad)
+    del u  # release the memo in info.out_grads
+    del u2  # release the Chunk that was shared by u and u2
 
 if __name__ == '__main__':
     test_drop_grad()
@@ -60,7 +60,7 @@ are accessible to both xgrad and x.grad .
 For output variable, the value of ograd needs to be used, while the TBlob address of info.out_grads
 needs to be kept. Currently, the TBlob adress in info.out_grads is overridden by ograd.
       info.out_grads[0] = *arrays[eid]; 
-This would release ugrad memory if ugrad were not alive at py frontend.
+This would release ugrad memory if ugrad were not alive at py frontend (eg allocated in attach_grad).
 The goal is to still assigning array[eid] to be info.out_grads. But the ograd TBlob value should be 
 copied to array[eid].
 
@@ -88,6 +88,6 @@ NDArray &NDArray::operator+=(const NDArray &src) {
 So the application scenario on output marked variables has to be the following:
 `ugrad` can not be used to fetch gradient, which should be warned when calling 
 ag.mark_variable. But user can be hinted to use `out_grad` to fetch gradient, 
-although it is not typical.
+which is not typical though.
 `u.grad` is working. 
 """
