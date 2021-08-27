@@ -590,7 +590,7 @@ def add_fileline_to_docstring(module, incursive=True):
 
 
 def _as_list(obj):
-    """A utility function that converts the argument to a list if it is not already.
+    """A utility function that converts the argument to a list if it is not yet.
 
     Parameters
     ----------
