@@ -31,7 +31,8 @@ import re
 import json
 import numpy as np
 
-from ..base import mx_real_t, MXNetError, NDArrayHandle, SymbolHandle, py_str, check_call, _LIB
+from ..base import mx_real_t, MXNetError, NDArrayHandle, SymbolHandle, py_str, check_call, _LIB, \
+    _as_list
 from .. import symbol, ndarray, initializer, autograd, _deferred_compute as dc, name as _name, \
     profiler as _profiler, context as _context
 from ..symbol.numpy import _symbol as np_symbol
@@ -1054,6 +1055,7 @@ class HybridBlock(Block):
         self._backend_opts = {}
         self._partition_if_dynamic = True
         self._first_forward = True
+        self._nleaf_vars = []
 
     def __setattr__(self, name, value):
         """Registers parameters."""
@@ -1264,7 +1266,7 @@ class HybridBlock(Block):
         args_without_none = [ele for ele in args if ele is not None]
         cargs = [args_without_none[i] if is_arg else i.data()
                  for is_arg, name, i in self._cached_op_args]
-        out = self._cached_op(*cargs)
+        out = self._cached_op(*cargs, _nleaf_vars=self._nleaf_vars)
         if isinstance(out, NDArray):
             out = [out]
         return _regroup(out, self._out_format)
@@ -1634,6 +1636,50 @@ class HybridBlock(Block):
                     p.reset_ctx(ctx)
         for p in params.values():
             p.reset_ctx(ctx)
+
+    def mark_vars(self, var_arrays):
+        """Mark the intermediate nodes for autograd computation.
+
+        Parameters
+        ----------
+        vars : ndarrays or List[ndarrays]
+            The marked arrays used in deferredcomputation
+        """
+        if not self._active:
+            var_arrays = _as_list(var_arrays)
+            self._nleaf_vars.extend(var_arrays)
+        else:
+            prev_val = dc.set_deferred_compute(False)
+            var_arrays = _as_list(var_arrays)
+            # Prepare ctypes array types
+            import ctypes
+            var_handles_type = ctypes.c_void_p * len(var_arrays)
+            # Convert handles
+            var_handles = var_handles_type(*[arr.handle for arr in var_arrays])
+            check_call(_LIB.MXNDArrayMarkDCVariables(var_handles, len(var_arrays), len(self._nleaf_vars)))
+            self._nleaf_vars.extend(var_arrays)
+            dc.set_deferred_compute(prev_val)
+
+    def get_mark_vars(self, mark_ids):
+        """Retrieve the marked ndarrays according to the order by which they are marked.
+
+        Parameters
+        ----------
+        mark_ids : int or List[int]
+            The order by which the ndarray is marked.
+
+        Returns
+        -------
+        ret : ndarrays or List[ndarrays]
+            The marked ndarray queried by mark_ids
+        """
+        mark_ids = _as_list(mark_ids)
+        ret = []
+        for i in mark_ids:
+            if i < 0 or i >= len(self._nleaf_vars):
+                raise ValueError("Index out of range")
+            ret.append(self._nleaf_vars[i])
+        return ret if len(ret) > 1 else ret[0]
 
 class SymbolBlock(HybridBlock):
     """Construct block from symbol. This is useful for using pre-trained models

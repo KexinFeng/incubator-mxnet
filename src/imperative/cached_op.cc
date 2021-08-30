@@ -755,7 +755,8 @@ OpStatePtr CachedOp::DynamicForward(
     // So if it's not the inline mode, we disable recording.
     RunGraph(false, idx, arrays, 0, idx.num_nodes(), std::move(array_reqs),
             std::move(ref_count), &states, dispatch_modes,
-            recording && inlining_, nullptr, monitor_callback_, monitor_all_);
+            recording && inlining_, nullptr, monitor_callback_, monitor_all_,
+            nleafs_);
   } else {
     mxnet::ShapeVector shapes = g.GetAttr<mxnet::ShapeVector>("shape");
     NaiveRunGraph(false, default_ctx, idx, arrays, 0, idx.num_nodes(),
