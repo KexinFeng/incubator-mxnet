@@ -661,7 +661,7 @@ class CachedOp {
   std::vector<bool> save_inputs_, save_outputs_;
   std::vector<OpReqType> bwd_output_reqs_;
   std::vector<NDArray*> nleafs_;
-  
+
   std::function<void(const char*, const char*, NDArrayHandle)> monitor_callback_{nullptr};
   bool monitor_all_{false};
 
