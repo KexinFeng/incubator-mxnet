@@ -1637,29 +1637,32 @@ class HybridBlock(Block):
         for p in params.values():
             p.reset_ctx(ctx)
 
-    def intermediate(self, name, var_arrays, grad_req='write'):
+    def intermediate(self, names, var_arrays_inp, grad_req='write'):
         """Mark the intermediate variables.
 
         Parameters
         ----------
-        name : name of the registered intermediate variable
-        var_arrays : the output of the expression
-        grad_req : gradient request
+        name : str or tuple[str], name of the registered intermediate variable
+        var_arrays_inp : ndarray or tuple[ndarray], the output of the expression
+        grad_req : str, gradient request
         """
         if not self._active:
-            self._nleaf_vars.update({name : Intermediate(name, var_arrays, grad_req)})
+            var_arrays = _as_list(var_arrays_inp)
+            names = _as_list(names)
+            self._nleaf_vars.update({name : Intermediate(name, array, grad_req) for name, array in zip(names, var_arrays)})
         else:
             prev_val = dc.set_deferred_compute(False)
-            var_arrays_list = _as_list(var_arrays)
+            var_arrays = _as_list(var_arrays_inp)
+            names = _as_list(names)
             # Prepare ctypes array types
             import ctypes
-            var_handles_type = ctypes.c_void_p * len(var_arrays_list)
+            var_handles_type = ctypes.c_void_p * len(var_arrays)
             # Convert handles
-            var_handles = var_handles_type(*[arr.handle for arr in var_arrays_list])
-            check_call(_LIB.MXNDArrayMarkDCVariables(var_handles, len(var_arrays_list), len(self._nleaf_vars)))
-            self._nleaf_vars.update({name : Intermediate(name, var_arrays, grad_req)})
-            dc.set_deferred_compute(prev_val)
-        return var_arrays
+            var_handles = var_handles_type(*[arr.handle for arr in var_arrays])
+            check_call(_LIB.MXNDArrayMarkDCVariables(var_handles, len(var_arrays), len(self._nleaf_vars)))
+            self._nleaf_vars.update({name : Intermediate(name, array, grad_req) for name, array in zip(names, var_arrays)})
+            dc.set_deferred_compute(prev_val)           
+        return var_arrays_inp
 
     def attach_grad_intermediate(self):
         """Attach gradient to all the intermediate variables.
