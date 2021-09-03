@@ -481,13 +481,17 @@ bool NDArray::fresh_out_grad() const {
   return info.fresh_out_grad;
 }
 
-
 void NDArray::set_fresh_out_grad(bool state) const {
   CHECK(!Imperative::AGInfo::IsNone(*this))
     << "NDArray has not been marked as a variable and does not have gradient state";
   Imperative::AGInfo& info = Imperative::AGInfo::Get(autograd_entry_.node);
   info.fresh_out_grad = state;
 }
+
+void NDArray::copy_autograd_entry_(const NDArray* src) {
+  autograd_entry_ = nnvm::NodeEntry{src->autograd_entry_.node, 0, 0};
+}
+
 
 #if MXNET_USE_ONEDNN == 1
 

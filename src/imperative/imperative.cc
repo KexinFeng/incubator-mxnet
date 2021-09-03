@@ -132,53 +132,89 @@ OpStatePtr Imperative::Invoke(
 // Create nnvm::NodeEntry for variables' and gradients' autograd_entry_
 // attribute and associate AGInfo with it's info attribute
 void Imperative::MarkVariables(
-    const std::vector<NDArray*>& variables, // u_py
+    const std::vector<NDArray*>& variables,  // u_py
     const std::vector<uint32_t>& grad_reqs,
     const std::vector<NDArray*>& gradients) {
   for (uint32_t i = 0; i < variables.size(); ++i) {
-    std::string str_c(std::to_string(variable_count_++));
+    // Unmarked variables have null autograd_entry_
+    if ((!variables[i]->autograd_entry_.node && !variables[i]->deferredcompute_entry_.node)
+      || (variables[i]->autograd_entry_.node && variables[i]->autograd_entry_.node->is_variable())
+      || (variables[i]->deferredcompute_entry_.node && variables[i]->deferredcompute_entry_.node->is_variable())) {
+      std::string str_c(std::to_string(variable_count_++));
+      variables[i]->autograd_entry_ = nnvm::NodeEntry{
+          nnvm::Symbol::CreateVariable("var" + str_c).outputs[0].node, 0, 0};
+      AGInfo& info = AGInfo::Create(variables[i]->autograd_entry_.node);
+      // node.info.output u_copy, which shares std::shared_ptr<Chunk> NDArray::ptr_
+      info.outputs.emplace_back(variables[i]->Detach());
+      info.out_grads.emplace_back(gradients[i]->Detach());
+      info.grad_req = static_cast<OpReqType>(grad_reqs[i]);
+      info.ctx = variables[i]->ctx();
 
-    variables[i]->autograd_entry_ = nnvm::NodeEntry{
-        nnvm::Symbol::CreateVariable("var" + str_c).outputs[0].node, 0, 0};
-    AGInfo& info = AGInfo::Create(variables[i]->autograd_entry_.node);
-    info.outputs.emplace_back(variables[i]->Detach()); // node.info.output u_copy
-    info.out_grads.emplace_back(gradients[i]->Detach());
-    info.grad_req = static_cast<OpReqType>(grad_reqs[i]);
-    info.ctx = variables[i]->ctx();
-
-    gradients[i]->autograd_entry_ = nnvm::NodeEntry{
-        nnvm::Symbol::CreateVariable("grad" + str_c).outputs[0].node, 0, 0};
-    AGInfo& grad_info = AGInfo::Create(gradients[i]->autograd_entry_.node);
-    grad_info.outputs.emplace_back(gradients[i]->Detach());
-    grad_info.ctx = gradients[i]->ctx();
+      gradients[i]->autograd_entry_ = nnvm::NodeEntry{
+          nnvm::Symbol::CreateVariable("grad" + str_c).outputs[0].node, 0, 0};
+      AGInfo& grad_info = AGInfo::Create(gradients[i]->autograd_entry_.node);
+      grad_info.outputs.emplace_back(gradients[i]->Detach());
+      grad_info.ctx = gradients[i]->ctx();
+    } else if (variables[i]->autograd_entry_.node) {
+      // Mark the nonleaf variables
+      AGInfo& info = AGInfo::Get(variables[i]->autograd_entry_.node);
+      // There are cases where variables are repetitively marked and the
+      // gradient is passed in to update `info.out_grads`. But, since
+      // gradients[i]->Detach() is called, gradients is copied, so user-
+      // passed array gradient is not used after all. So here when repeti
+      // -tive marking is seen, simply continue instead of assigning passed
+      // in gradient.
+      CHECK_EQ(info.out_grads.size(), 0)
+        <<"The node has already been marked. Cannot mark it again.";
+      info.out_grads.emplace_back(gradients[i]->Detach());
+      info.grad_req = static_cast<OpReqType>(grad_reqs[i]);  // otherwise defaulted to be kNullOp
+      info.ctx = variables[i]->ctx();
+    } else {
+      // std::string str_c(std::to_string(variable_count_++));
+      variables[i]->autograd_entry_ = nnvm::NodeEntry{
+          variables[i]->deferredcompute_entry_.node, 0, 0};
+      AGInfo& info = AGInfo::Create(variables[i]->autograd_entry_.node);
+      info.outputs.emplace_back(variables[i]->Detach());
+      info.out_grads.emplace_back(gradients[i]->Detach());
+      info.grad_req = static_cast<OpReqType>(grad_reqs[i]);  // otherwise defaulted to be kNullOp
+      info.ctx = variables[i]->ctx();
+    }
   }
 }
 
-// Create nnvm::NodeEntry for retain_queried node' and gradients' autograd_entry_
-// attribute and associate AGInfo with it's info attribute
-void Imperative::MarkVariablesEx(
-    const std::vector<NDArray*>& variables,
-    const std::vector<uint32_t>& grad_reqs,
-    const std::vector<NDArray*>& gradients) {
-  for (uint32_t i = 0; i < variables.size(); ++i) {
-    AGInfo& info = dmlc::get<AGInfo>(variables[i]->autograd_entry_.node->info);
-    CHECK_EQ(info.out_grads.size(), 0)
-      <<"The node has already been marked. Cannot retain it again.";
-    info.out_grads.emplace_back(gradients[i]->Detach());
-    info.grad_req = static_cast<OpReqType>(grad_reqs[i]); // otherwise defaulted to be kNullOp
-    info.ctx = variables[i]->ctx(); // redundant operation
+// Unmark the variables to free the memory.
+void Imperative::DropGrads(const std::vector<NDArray*>& variables) {
+  for (auto variable : variables) {
+    if (variable->autograd_entry_.node) {
+      AGInfo& info = AGInfo::Get(variable->autograd_entry_.node);
+      CHECK_NE(info.out_grads.size(), 0)
+        <<"The node has empty out_grads already. Cannot DropGrads again.";
+      for (auto grad : info.out_grads) {
+        // vector<NDArray> out_grads is the only place that references grad
+        // So maybe no need to call grad.ReInit(); only need to call 
+        // info.out_grads.clear(), then the chunk grad.ptr_ will be recycled.
 
-    // CHECK_NE(info.grad_req, static_cast<OpReqType>(grad_reqs[i]))
-      // << "KX: info.grad_req possibly not initialized.";
+        // But for leaf variables, this will cause difference. This may disable
+        // the retained graph computation since the space of the marked variable
+        // is now set to ptr_=nullptr. But since node.info.grad_req = kNullOpt,
+        // this may still work, even the memo of variable is recycled.
 
-    // Do I need to create Node/NodeEntry for gradients[i]->autograd_entry_?
-    // That depends on which NDArray is retrieved from python. If it can be retrived 
-    // by u->info.out_grads, without using the Node of gradients[i], then no need to 
-    // create such node.
-
-    // Create Node for gradients[i] and set it as the node's output; this
-    // is useful for higher order grad wrt it.
-    // But here as intermediate node, it is not necessary to have a gradient node for it.
+        // Actually, grad.ReInit() just frees the pointer in NDArray grad; the 
+        // chunk is still pointed by user provided NDArray passed from py front
+        // end.
+        grad.ReInit(); 
+      }
+      info.out_grads.clear();
+      info.grad_req = kNullOp;
+      // Now info.out_grads.size() == 0, meaning the node is unmarked.
+      // The variable has been restored to the state when it was unmarked.
+      // u.grad == None
+      // Edge case: variable is the output. Then in Imperative::Backward(), 
+      // info.out_grads is linked to user-provided out_grads. In this case,
+      // this memo should not be cleared. Maybe it's ok since it'll be 
+      // provided by the user again when calling z.backward(out_grad)
+      // Just need to check if the node is in graph.outputs
+    }
   }
 }
 
@@ -366,6 +402,30 @@ void Imperative::RecordDeferredCompute(nnvm::NodeAttrs &&attrs,
   }
 
   DCInfo::Create(node, inputs, outputs);
+}
+
+void Imperative::MarkDCVariables(const std::vector<NDArray*>& nleafs, int cnt_vars) {
+// Find the dc_entry_.node
+// modify the dc_node NodeAttrs, which marks the node and used in autograd round (invoke of CachedOp)
+// No need to assign anything to ag_entry_ of nleafs yet. 
+// This step can be done by passing self.nleaf_vars into the invoke of CachedOp and then assign the 
+// node_ag to the self.nleaf_vars NDArray.ag_entry_. Thus no need to return handles linked to the marked nodes.
+  // for (NDArray * nleaf : nleafs) {
+  //   CHECK(!Imperative::DCInfo::IsNone(*nleaf))
+  //       << "ValueError: nleaf_arrays for MarkDCVariables "
+  //       << "must have a deferred compute history associated with them.";
+  //   nnvm::ObjectPtr node = nleaf->deferredcompute_entry_.node;
+  //   node->attrs.dict["mark_id"] = std::to_string(cnt_vars++);
+  // }
+  for (NDArray * nleaf : nleafs) {
+    if (Imperative::DCInfo::IsNone(*nleaf)) {
+      LOG(WARNING) << "The marked node doesn't have deferred compute history.";
+    } else {
+      nnvm::ObjectPtr node = nleaf->deferredcompute_entry_.node;
+      node->attrs.dict["mark_id"] = std::to_string(cnt_vars);
+    }
+    cnt_vars++;
+  }
 }
 
 nnvm::Symbol Imperative::GetDeferredComputeSymbol(const std::vector<NDArray *> &outputs) {
@@ -607,9 +667,9 @@ std::vector<NDArray*> Imperative::Backward(
       arrays[eid] = &info.out_grads[0];
     } else { 
       // arrays[eid] has been assigned a value from ograd_entries
-      // So reset `us_grads.node->info.out_grads` to be 
+      // So reset `us.node->info.out_grads` to be 
       // `ograd_entries.node->info.outputs`
-      info.out_grads[0] = *arrays[eid]; 
+      info.out_grads[0] = *arrays[eid];
       // By default this is a copy, not a reference assignment, since 
       // the addresses are still different but the fields become the 
       // same. For example, .ptr_ of the rvalued NDArray evaluated from

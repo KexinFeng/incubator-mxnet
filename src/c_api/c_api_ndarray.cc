@@ -329,25 +329,6 @@ int MXAutogradMarkVariables(uint32_t num_var,
   API_END();
 }
 
-int MXAutogradMarkVariablesEx(uint32_t num_var,
-                            NDArrayHandle *var_handles,
-                            uint32_t *reqs_array,
-                            NDArrayHandle *grad_handles) {
-  API_BEGIN();
-  std::vector<NDArray*> variables, gradients;
-  std::vector<uint32_t> grad_reqs;
-  variables.reserve(num_var);
-  gradients.reserve(num_var);
-  grad_reqs.reserve(num_var);
-  for (uint32_t i = 0; i < num_var; ++i) {
-    variables.emplace_back(static_cast<NDArray*>(var_handles[i]));
-    gradients.emplace_back(static_cast<NDArray*>(grad_handles[i]));
-    grad_reqs.emplace_back(reqs_array[i]);
-  }
-  Imperative::Get()->MarkVariablesEx(variables, grad_reqs, gradients);
-  API_END();
-}
-
 int MXAutogradDropGrads(uint32_t num_var,
                        NDArrayHandle *var_handles) {
   API_BEGIN();
@@ -490,4 +471,16 @@ int MXNDArrayGetDeferredComputeSymbol(NDArrayHandle *output_handles, int num_out
   *s = Imperative::Get()->GetDeferredComputeSymbol(outputs);
   *out = s;
   API_END_HANDLE_ERROR(delete s;);
+}
+
+int MXNDArrayMarkDCVariables(NDArrayHandle *nleaf_handles, int num_nleafs, int cnt_var) {
+  API_BEGIN();
+  std::vector<NDArray *> nleafs;
+  nleafs.reserve(num_nleafs);
+  for (int i = 0; i < num_nleafs; ++i) {
+    NDArray *array = reinterpret_cast<NDArray *>(nleaf_handles[i]);
+    nleafs.emplace_back(array);
+  }
+  Imperative::Get()->MarkDCVariables(nleafs, cnt_var);
+  API_END();
 }

@@ -16,6 +16,7 @@
 # under the License.
 
 import functools
+from mxnet import test_utils
 import mxnet.ndarray as nd
 from mxnet.ndarray import zeros_like
 from mxnet.autograd import *
@@ -50,7 +51,7 @@ def grad_and_loss(func, argnum=None):
             argnum_ = argnum if isinstance(argnum, list) else [argnum]
             variables = [args[i] for i in argnum_]
         for x in variables:
-            assert isinstance(x, NDArray), "type of autograd input should NDArray."
+            assert isinstance(x, NDArray), "type of autograd input should be NDArray."
         grads = [zeros_like(x) for x in variables]
         mark_variables(variables, grads)
         with record():
@@ -95,6 +96,21 @@ def grad(func, argnum=None):
     def wrapped(*args):
         return grad_with_loss_func(*args)[0]
     return wrapped
+
+    def f_with_mode(a, b, mode):
+        if mode:
+            return a+b
+        else:
+            return a*b
+
+    a = nd.uniform(shape=(3, 2))
+    b = nd.uniform(shape=(3, 2))
+    f_add_grad = lambda x, y, mode: [nd.ones(x.shape), nd.ones(y.shape)]
+    f_mul_grad = lambda x, y, mode: [y, x]
+    autograd_assert(a, b, True,
+        argnum=[0, 1], func=f_with_mode, grad_func=f_add_grad)
+    autograd_assert(a, b, False,
+        argnum=[0, 1], func=f_with_mode, grad_func=f_mul_grad)
 
 def autograd_assert(*args, **kwargs):
     func   = kwargs["func"]
@@ -243,7 +259,7 @@ def test_detach_updated_grad():
     assert x._fresh_grad == False
 
 
-def test_retain_grad():
+def test_retain_graph():
     x = mx.nd.ones((2, 2))
     dx = mx.nd.zeros((2, 2))
     mark_variables([x], [dx], grad_reqs='add')
@@ -519,3 +535,117 @@ def test_gradient():
     dx.backward()
     assert abs(x.grad.asscalar() - 2.71828175) < 1e-7
 
+def test_retain_grad_drop_grad():
+    x = nd.array([1,2,3,4])
+    x.attach_grad()
+    y = nd.array([5,6,7,8])
+    y.attach_grad()
+
+    with mx.autograd.record():
+        u = x * y
+        z = u * x
+
+    u.attach_grad()
+    z.attach_grad()
+    out_grad = nd.array([10, 10, 10, 10])
+    z.backward(out_grad, retain_graph=True)
+
+    assert (u.grad == out_grad * x).asnumpy().all()
+    assert (z.grad == out_grad).asnumpy().all()
+    assert (x.grad == out_grad * 2 * x * y).asnumpy().all()
+    assert (y.grad == out_grad * x*x).asnumpy().all()
+
+    u.drop_grad()
+    z.drop_grad()
+    y.drop_grad()
+    out_grad = nd.array([0.1, 0.1, 0.1, 0.1])
+    z.backward(out_grad)
+
+    assert u.grad is None
+    assert z.grad is None
+    assert (x.grad == out_grad * 2 * x * y).asnumpy().all()
+    assert y.grad is None
+
+def test_retain_grad_drop_grad_gluon():
+    class CompBlock(mx.gluon.HybridBlock):
+        def __init__(self):
+            super().__init__()
+
+        def forward(self, a, b):
+            out1 = a*b
+            out2 = out1 * a
+            self.mark_vars(out1)
+            return out2
+
+    x = mx.np.array([1,2,3,4])
+    y = mx.np.array([5,6,7,8])
+    x.attach_grad()
+    y.attach_grad()
+    block2 = CompBlock()
+    block2.initialize()
+    # block2.hybridize()
+    with mx.autograd.record():
+        z = block2(x, y)
+    u = block2.get_mark_vars([0])
+    u.attach_grad()
+    z.attach_grad()
+    z.backward(retain_graph=True)
+
+    assert (u.grad == x).all()
+    assert (z.grad == mx.np.array([1,1,1,1])).all()
+    assert (x.grad == 2 * x * y).all()
+    assert (y.grad == x*x).all()
+
+    u.drop_grad()
+    z.drop_grad()
+    y.drop_grad()
+    z.backward()
+
+    assert u.grad is None and z.grad is None and y.grad is None
+    assert (x.grad == 2 * x * y).all()
+
+
+def test_retain_grad_drop_grad_gluon2():
+    class CompBlock(mx.gluon.HybridBlock):
+        def __init__(self):
+            super().__init__()
+            
+        def forward(self, a, b):
+            out1 = a*b  
+            self.mark_vars([out1]) 
+            out2 = out1 * a
+            self.mark_vars(out2)
+            return out2
+
+    x = mx.np.array([1,2,3,4])
+    y = mx.np.array([5,6,7,8])
+    x.attach_grad()
+    y.attach_grad()
+    block2 = CompBlock()
+    block2.initialize()
+    block2.hybridize() 
+    with mx.autograd.record():
+        z = block2(x, y)
+
+    u = block2.get_mark_vars(0)
+    z = block2.get_mark_vars([1])
+    u.attach_grad() 
+    z.attach_grad()
+    z.backward(retain_graph=True)
+
+    assert (u.grad == x).all()
+    assert (z.grad == mx.np.array([1,1,1,1])).all()
+    assert (x.grad == 2 * x * y).all()
+    assert (y.grad == x*x).all()
+
+    u.drop_grad()
+    z.drop_grad()
+    y.drop_grad()
+    z.backward()
+
+    assert u.grad is None and z.grad is None and y.grad is None
+    assert (x.grad == 2 * x * y).all()
+
+if __name__ == '__main__':
+    test_retain_grad_drop_grad_gluon()
+    test_retain_grad_drop_grad_gluon2()

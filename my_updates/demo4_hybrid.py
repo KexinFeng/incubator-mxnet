@@ -27,14 +27,16 @@ def test_retain_grad_drop_grad_gluon2():
     class CompBlock(HybridBlock):
         def __init__(self):
             super().__init__()
-            self.marked_var = None
-            self.marked_var2 = None
+            
         def forward(self, a, b):
             out1 = a*b  # out1 is fetched from the dc_ndoutputs NDArray
             out2 = out1 * a  # so is out2
-            self.marked_var = out1
-            self.marked_var2 = out2
+            self.mark_vars([out1]) # which will temporarily turn off dc.record()
+                                         # apply only on hybridize mode
+            self.mark_vars(out2)
+
             return out2
+
     x = mx.np.array([1,2,3,4])
     y = mx.np.array([5,6,7,8])
     x.attach_grad()
@@ -44,15 +46,26 @@ def test_retain_grad_drop_grad_gluon2():
     block2.hybridize()
     with autograd.record():
         z = block2(x, y)
-    u = block2.marked_var
+
+    mark_vars = block2._nleaf_vars
+    # mark_vars = block2.get_nleaf_vars() # HybridBlock._nleaf_vars should be OrderedDict 
+
+    u = mark_vars[0]
     u.attach_grad()
-    ztmp = block2.marked_var2
-    ztmp.attach_grad()
-    z.attach_grad()
-    z.backward(retain_graph=True)
+    # ztmp = mark_vars['out2']
+
+    # with autograd.record():
+    #     z = block2(x, y)
+    # z.list_internals()
+
+    # ztmp = block2.marked_var2
+    # ztmp.attach_grad()
+    # z.attach_grad()
+    # z.backward(retain_graph=True)
+    z.backward()
     print(x.grad, y.grad, u.grad)
 
-    # assert (u.grad == x).all()
+    assert (u.grad == x).all()
     # assert (z.grad == mx.np.array([1,1,1,1])).all()
     # assert (x.grad == 2 * x * y).all()
     # assert (y.grad == x*x).all()
