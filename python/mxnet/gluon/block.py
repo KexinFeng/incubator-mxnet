@@ -1638,6 +1638,14 @@ class HybridBlock(Block):
             p.reset_ctx(ctx)
 
     def intermediate(self, name, var_arrays, grad_req='write'):
+        """Mark the intermediate variables.
+
+        Parameters
+        ----------
+        name : name of the registered intermediate variable
+        var_arrays : the evaluated function
+        grad_req : gradient request
+        """
         if not self._active:
             self._nleaf_vars.update({name : Intermediate(name, var_arrays, grad_req)})
         else:
@@ -1650,14 +1658,18 @@ class HybridBlock(Block):
             var_handles = var_handles_type(*[arr.handle for arr in var_arrays_list])
             check_call(_LIB.MXNDArrayMarkDCVariables(var_handles, len(var_arrays_list), len(self._nleaf_vars)))
             self._nleaf_vars.update({name : Intermediate(name, var_arrays, grad_req)})
-            dc.set_deferred_compute(prev_val)           
+            dc.set_deferred_compute(prev_val)
         return var_arrays
 
     def attach_grad_intermediate(self):
+        """Attach gradient to all the intermediate variables.
+        """
         for val in self._nleaf_vars.values():
             val.data().attach_grad(grad_req=val.grad_req)
 
     def get_intermediate(self, names):
+        """Get the intermediate variables by names
+        """
         if isinstance(names, list):
             return [self._nleaf_vars[n] for n in names]
         else:
