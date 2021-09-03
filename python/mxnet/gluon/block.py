@@ -1649,7 +1649,8 @@ class HybridBlock(Block):
         if not self._active:
             var_arrays = _as_list(var_arrays_inp)
             names = _as_list(names)
-            self._nleaf_vars.update({name : Intermediate(name, array, grad_req) for name, array in zip(names, var_arrays)})
+            self._nleaf_vars.update(
+                {name : Intermediate(name, array, grad_req) for name, array in zip(names, var_arrays)})
         else:
             prev_val = dc.set_deferred_compute(False)
             var_arrays = _as_list(var_arrays_inp)
@@ -1660,8 +1661,9 @@ class HybridBlock(Block):
             # Convert handles
             var_handles = var_handles_type(*[arr.handle for arr in var_arrays])
             check_call(_LIB.MXNDArrayMarkDCVariables(var_handles, len(var_arrays), len(self._nleaf_vars)))
-            self._nleaf_vars.update({name : Intermediate(name, array, grad_req) for name, array in zip(names, var_arrays)})
-            dc.set_deferred_compute(prev_val)           
+            self._nleaf_vars.update(
+                {name : Intermediate(name, array, grad_req) for name, array in zip(names, var_arrays)})
+            dc.set_deferred_compute(prev_val)
         return var_arrays_inp
 
     def attach_grad_intermediate(self):
