@@ -1643,7 +1643,7 @@ class HybridBlock(Block):
         Parameters
         ----------
         name : name of the registered intermediate variable
-        var_arrays : the evaluated function
+        var_arrays : the output of the expression
         grad_req : gradient request
         """
         if not self._active:
