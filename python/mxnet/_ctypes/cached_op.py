@@ -75,7 +75,7 @@ class CachedOp(object):
         # New FFI only supports numpy ndarray
         default_ctx = kwargs.pop('default_ctx', None)
         out = kwargs.pop('out', None)
-        nleaf_vars = kwargs.pop('_nleaf_vars', [])
+        nleaf_vars = [container.data() for container in kwargs.pop('_nleaf_vars', [])]
         if kwargs:
             raise TypeError(
                 "CachedOp.__call__ got unexpected keyword argument(s): " + \
