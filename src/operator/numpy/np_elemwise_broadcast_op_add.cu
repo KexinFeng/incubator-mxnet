@@ -17,43 +17,22 @@
  * under the License.
  */
 
+/*!
+ *  Copyright (c) 2019 by Contributors
+ * \file np_elemwise_broadcast_op_add.cu
+ * \brief GPU Implementation of basic functions for elementwise binary broadcast add operator.
+ */
 
-#ifndef MXNET_PROFILER_NVTX_H_
-#define MXNET_PROFILER_NVTX_H_
-
-#if MXNET_USE_NVTX
-
-#include <string>
-#include <unordered_map>
-#include "nvToolsExt.h"
+#include "./np_elemwise_broadcast_op.h"
 
 namespace mxnet {
-namespace profiler {
-namespace nvtx {
+namespace op {
 
-class NVTXDuration {
- public:
-  explicit NVTXDuration(const char *name) noexcept
-      : range_id_(0), name_(name) {}
+NNVM_REGISTER_OP(_npi_add)
+.set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCCompute{"add"});
 
-  inline void start() {
-    range_id_ = nvtxRangeStartA(name_);
-  }
+NNVM_REGISTER_OP(_backward_npi_broadcast_add)
+.set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCBackwardUseIn{"one", "one"});
 
-  inline void stop() {
-    nvtxRangeEnd(range_id_);
-  }
-
- private:
-  nvtxRangeId_t range_id_;
-  const char *name_;
-};
-
-
-
-}  // namespace nvtx
-}  // namespace profiler
+}  // namespace op
 }  // namespace mxnet
-
-#endif  // MXNET_USE_NVTX
-#endif  // MXNET_PROFILER_NVTX_H_

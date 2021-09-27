@@ -18,7 +18,7 @@
  */
 
 /*!
- * \file np_kron.cc
+ * \file np_kron_forward.cc
  * \brief CPU Implementation of numpy-compatible Kronecker product
  */
 
@@ -28,8 +28,8 @@ namespace mxnet {
 namespace op {
 
 inline bool KronOpShape(const nnvm::NodeAttrs& attrs,
-                        mxnet::ShapeVector *in_attrs,
-                        mxnet::ShapeVector *out_attrs) {
+                        mxnet::ShapeVector* in_attrs,
+                        mxnet::ShapeVector* out_attrs) {
   CHECK_EQ(in_attrs->size(), 2U);
   CHECK_EQ(out_attrs->size(), 1U);
 
@@ -63,32 +63,22 @@ inline bool KronOpShape(const nnvm::NodeAttrs& attrs,
 }
 
 NNVM_REGISTER_OP(_npi_kron)
-.set_num_inputs(2)
-.set_num_outputs(1)
-.set_attr<nnvm::FListInputNames>("FListInputNames",
-  [](const NodeAttrs& attrs) {
-    return std::vector<std::string>{"a", "b"};
-  })
-.set_attr<mxnet::FInferShape>("FInferShape", KronOpShape)
-.set_attr<nnvm::FInferType>("FInferType", ElemwiseType<2, 1>)
-.set_attr<FResourceRequest>("FResourceRequest",
-  [](const NodeAttrs& attrs) {
-    return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
-  })
-.set_attr<FCompute>("FCompute<cpu>", KronOpForward<cpu>)
-.set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseIn{"_backward_npi_kron"})
-.add_argument("a", "NDArray-or-Symbol", "First input")
-.add_argument("b", "NDArray-or-Symbol", "Second input");
-
-NNVM_REGISTER_OP(_backward_npi_kron)
-.set_num_inputs(3)
-.set_num_outputs(2)
-.set_attr<nnvm::TIsBackward>("TIsBackward", true)
-.set_attr<FResourceRequest>("FResourceRequest",
-  [](const NodeAttrs& attrs) {
-    return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
-  })
-.set_attr<FCompute>("FCompute<cpu>", KronOpBackward<cpu>);
+    .set_num_inputs(2)
+    .set_num_outputs(1)
+    .set_attr<nnvm::FListInputNames>("FListInputNames",
+                                     [](const NodeAttrs& attrs) {
+                                       return std::vector<std::string>{"a", "b"};
+                                     })
+    .set_attr<mxnet::FInferShape>("FInferShape", KronOpShape)
+    .set_attr<nnvm::FInferType>("FInferType", ElemwiseType<2, 1>)
+    .set_attr<FResourceRequest>("FResourceRequest",
+                                [](const NodeAttrs& attrs) {
+                                  return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
+                                })
+    .set_attr<FCompute>("FCompute<cpu>", KronOpForward<cpu>)
+    .set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseIn{"_backward_npi_kron"})
+    .add_argument("a", "NDArray-or-Symbol", "First input")
+    .add_argument("b", "NDArray-or-Symbol", "Second input");
 
 }  // namespace op
 }  // namespace mxnet

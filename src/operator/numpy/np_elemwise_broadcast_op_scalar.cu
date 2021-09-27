@@ -19,44 +19,14 @@
 
 /*!
  *  Copyright (c) 2019 by Contributors
- * \file np_elemwise_broadcast_op.cu
- * \brief GPU Implementation of basic functions for elementwise binary broadcast operator.
+ * \file np_elemwise_broadcast_op_add.cu
+ * \brief GPU Implementation of basic functions for elementwise binary add.
  */
 
 #include "./np_elemwise_broadcast_op.h"
 
 namespace mxnet {
 namespace op {
-
-NNVM_REGISTER_OP(_npi_add)
-.set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCCompute{"add"});
-
-NNVM_REGISTER_OP(_backward_npi_broadcast_add)
-.set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCBackwardUseIn{"one", "one"});
-
-NNVM_REGISTER_OP(_npi_subtract)
-.set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCCompute{"sub"});
-
-NNVM_REGISTER_OP(_backward_npi_broadcast_sub)
-.set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCBackwardUseIn{"one", "negone"});
-
-NNVM_REGISTER_OP(_npi_multiply)
-.set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCCompute{"mul"});
-
-NNVM_REGISTER_OP(_backward_npi_broadcast_mul)
-.set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCBackwardUseIn{"right", "left"});
-
-NNVM_REGISTER_OP(_npi_mod)
-.set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCCompute{"mod"});
-
-NNVM_REGISTER_OP(_backward_npi_broadcast_mod)
-.set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCBackwardUseIn{"mod_grad", "mod_rgrad"});
-
-NNVM_REGISTER_OP(_npi_power)
-.set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCCompute{"power"});
-
-NNVM_REGISTER_OP(_backward_npi_broadcast_power)
-.set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCBackwardUseIn{"power_grad", "power_rgrad"});
 
 NNVM_REGISTER_OP(_npi_add_scalar)
 .set_attr<FCompute>("FCompute<gpu>", BinaryScalarRTCCompute{"add"});

@@ -17,5 +17,17 @@
  * under the License.
  */
 
+/*!
+ * \file np_dot_forward.cu
+ * \brief GPU Implementation of numpy-compatible dot
+ */
 
-#include "nvtx.h"
+#include "./np_dot-inl.h"
+
+namespace mxnet {
+namespace op {
+
+NNVM_REGISTER_OP(_npi_dot).set_attr<FCompute>("FCompute<gpu>", NumpyDotForward<gpu>);
+
+}  // namespace op
+}  // namespace mxnet

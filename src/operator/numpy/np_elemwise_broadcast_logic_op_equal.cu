@@ -18,20 +18,18 @@
  */
 
 /*!
- * \file np_dot.cu
- * \brief GPU Implementation of numpy-compatible dot
+ *  Copyright (c) 2019 by Contributors
+ * \file np_elemwise_broadcast_logic_op_equal.cu
+ * \brief GPU Implementation of basic functions for equal operation.
  */
 
-#include "./np_dot-inl.h"
+#include "./np_elemwise_broadcast_logic_op.h"
 
 namespace mxnet {
 namespace op {
 
-NNVM_REGISTER_OP(_npi_dot)
-.set_attr<FCompute>("FCompute<gpu>", NumpyDotForward<gpu>);
-
-NNVM_REGISTER_OP(_backward_npi_dot)
-.set_attr<FCompute>("FCompute<gpu>", NumpyDotBackward<gpu>);
+MXNET_OPERATOR_REGISTER_NP_BINARY_LOGIC_GPU(equal);
+MXNET_OPERATOR_REGISTER_NP_BINARY_SCALAR_LOGIC_GPU(equal);
 
 }  // namespace op
 }  // namespace mxnet
