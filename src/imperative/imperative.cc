@@ -634,20 +634,6 @@ std::vector<NDArray*> Imperative::Backward(const std::vector<NDArray*>& outputs,
     }
     ref_count[eid] = 1;
   }
-  const std::vector<NodeEntry>& us_grads =
-    g_graph.GetAttr<std::vector<NodeEntry>>("nleaf_grads");
-  CHECK_EQ(us_grads.size(), us.size())
-    << "Size of queried nleaf_vars and size of their gradients don't match.";
-  for (size_t i = 0; i < us_grads.size(); i++) {
-    size_t eid = idx.entry_id(us_grads[i]);
-    AGInfo& info = AGInfo::Get(us[i].node);
-    if (arrays[eid]->dtype_ == -1) {
-      arrays[eid] = &info.out_grads[0];
-    } else {
-      info.out_grads[0] = *arrays[eid];
-    }
-    ref_count[eid] = 1;
-  }
 
   // Assign context
   auto vctx = PlaceDevice(idx);
