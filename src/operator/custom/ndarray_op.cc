@@ -18,7 +18,6 @@
  */
 
 /*!
- * Copyright (c) 2015 by Contributors
  * \file ndarray_op.cc
  * \brief
  * \author Junyuan Xie
@@ -88,7 +87,10 @@ void NDArrayOp<xpu>::Forward(const OpContext& ctx,
 
   CHECK(param_.pinfo->forward(ptrs.size(), ptrs.data(), tags.data(), param_.pinfo->p_forward));
   Engine::Get()->PushAsync(
-      [ndcpy, ctx](RunContext rctx, Engine::CallbackOnComplete on_complete) {
+      [ndcpy, ctx](RunContext rctx,
+                   Engine::CallbackOnStart on_start,
+                   Engine::CallbackOnComplete on_complete) {
+        on_start();
         ctx.async_on_complete();
         on_complete();
       },
@@ -145,7 +147,10 @@ void NDArrayOp<xpu>::Backward(const OpContext& ctx,
 
   CHECK(param_.pinfo->backward(ptrs.size(), ptrs.data(), tags.data(), param_.pinfo->p_backward));
   Engine::Get()->PushAsync(
-      [ndcpy, ctx](RunContext rctx, Engine::CallbackOnComplete on_complete) {
+      [ndcpy, ctx](RunContext rctx,
+                   Engine::CallbackOnStart on_start,
+                   Engine::CallbackOnComplete on_complete) {
+        on_start();
         ctx.async_on_complete();
         on_complete();
       },

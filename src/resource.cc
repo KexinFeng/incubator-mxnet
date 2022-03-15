@@ -18,7 +18,6 @@
  */
 
 /*!
- *  Copyright (c) 2015 by Contributors
  * \file resource.cc
  * \brief Implementation of resource manager.
  */
@@ -267,7 +266,10 @@ class ResourceManagerImpl : public ResourceManager {
     inline void Seed(uint32_t seed) {
       mshadow::Random<xpu>* r = prnd;
       Engine::Get()->PushAsync(
-          [r, seed](RunContext rctx, Engine::CallbackOnComplete on_complete) {
+          [r, seed](RunContext rctx,
+                    Engine::CallbackOnStart on_start,
+                    Engine::CallbackOnComplete on_complete) {
+            on_start();
             r->set_stream(rctx.get_stream<xpu>());
             r->Seed(seed);
             on_complete();
@@ -342,7 +344,10 @@ class ResourceManagerImpl : public ResourceManager {
       uint32_t current_seed = p->ctx.dev_id + i * kMaxNumGPUs + seed * kRandMagic;
       Resource* r           = &(p->resource[i]);
       Engine::Get()->PushAsync(
-          [r, current_seed](RunContext rctx, Engine::CallbackOnComplete on_complete) {
+          [r, current_seed](RunContext rctx,
+                            Engine::CallbackOnStart on_start,
+                            Engine::CallbackOnComplete on_complete) {
+            on_start();
             auto state_space             = static_cast<resource::SpaceAllocator*>(r->ptr_);
             mshadow::Stream<gpu>* stream = rctx.get_stream<gpu>();
             CHECK_EQ(state_space->ctx.dev_id, stream->dev_id)
@@ -449,7 +454,10 @@ class ResourceManagerImpl : public ResourceManager {
     inline void SeedOne(size_t i, uint32_t seed) {
       common::random::RandGenerator<xpu>* r = sampler[i];
       Engine::Get()->PushAsync(
-          [r, seed](RunContext rctx, Engine::CallbackOnComplete on_complete) {
+          [r, seed](RunContext rctx,
+                    Engine::CallbackOnStart on_start,
+                    Engine::CallbackOnComplete on_complete) {
+            on_start();
             r->Seed(rctx.get_stream<xpu>(), seed);
             on_complete();
           },

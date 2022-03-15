@@ -18,7 +18,6 @@
  */
 
 /*!
- *  Copyright (c) 2016 by Contributors
  * \file c_api_ndarray.cc
  * \brief C API of mxnet
  */
@@ -335,8 +334,7 @@ int MXAutogradMarkVariables(uint32_t num_var,
   API_END();
 }
 
-int MXAutogradDropGrads(uint32_t num_var,
-                       NDArrayHandle *var_handles) {
+int MXAutogradDropGrads(uint32_t num_var, NDArrayHandle* var_handles) {
   API_BEGIN();
   std::vector<NDArray*> variables;
   variables.reserve(num_var);

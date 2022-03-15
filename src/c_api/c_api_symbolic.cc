@@ -18,7 +18,6 @@
  */
 
 /*!
- *  Copyright (c) 2016 by Contributors
  * \file c_api_symbolic.cc
  * \brief C API of mxnet
  */
@@ -1196,9 +1195,9 @@ int MXGenBackendSubgraph(SymbolHandle sym_handle,
   const auto& subgraph_prop_list = backend->GetSubgraphProperties();
   for (auto property : subgraph_prop_list) {
     if (property->HasAttr("disable") && property->GetAttr<bool>("disable") == true) {
-      auto full_name = property->HasAttr("property_name")
-                           ? property->GetAttr<std::string>("property_name")
-                           : std::string();
+      auto full_name = property->HasAttr("property_name") ?
+                           property->GetAttr<std::string>("property_name") :
+                           std::string();
       LOG(INFO) << "subgraph property " << full_name << " from backend " << backend_name
                 << " is disabled.";
       continue;

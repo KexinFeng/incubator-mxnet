@@ -18,7 +18,6 @@
  */
 
 /*!
- *  Copyright (c) 2014 by Contributors
  * \file expr_engine-inl.h
  * \brief definitions of how expressions should be evaluated
  * \author Tianqi Chen, Bing Xu
@@ -27,7 +26,7 @@
 #define MSHADOW_EXPR_ENGINE_INL_H_
 #include <utility>
 #include <algorithm>
-#include "./logging.h"
+#include "dmlc/logging.h"
 #include "./expression.h"
 #include "./tensor.h"
 

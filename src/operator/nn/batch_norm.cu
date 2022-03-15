@@ -18,7 +18,6 @@
  */
 
 /*!
- * Copyright (c) 2017 by Contributors
  * \file batch_norm.cu
  * \brief CUDA Batch Normalization code
  * \author Chris Olivier, Bing Xu, Da Zheng
@@ -40,7 +39,7 @@
 #define ADDTO_BETA_FLAG       (1 << 8)
 
 #if MXNET_USE_CUDNN == 1
-#include "./cudnn/cudnn_batch_norm-inl.h"
+#include "./cudnn/cudnn_batch_norm.h"
 #endif
 
 #include "../../../include/mxnet/tensor_blob.h"
@@ -281,13 +280,13 @@ __launch_bounds__(inference_forward_threads) __global__
         my_channel = my_channel % num_channels;
       AType current_input = static_cast<AType>(scratch.separate[j]);
 
-      AType invstd = small_num_channels ? saved_invstd[my_channel]
-                                        : variance_to_invstd(runningVar[my_channel], epsilon);
-      AType mean   = small_num_channels ? saved_mean[my_channel] : runningMean[my_channel];
+      AType invstd = small_num_channels ? saved_invstd[my_channel] :
+                                          variance_to_invstd(runningVar[my_channel], epsilon);
+      AType mean = small_num_channels ? saved_mean[my_channel] : runningMean[my_channel];
       AType gamma =
-          small_num_channels
-              ? saved_weight[my_channel]
-              : ((weight != nullptr && (flags & FIX_GAMMA_FLAG) == 0) ? weight[my_channel] : 1);
+          small_num_channels ?
+              saved_weight[my_channel] :
+              ((weight != nullptr && (flags & FIX_GAMMA_FLAG) == 0) ? weight[my_channel] : 1);
       AType beta =
           small_num_channels ? saved_bias[my_channel] : ((bias != nullptr) ? bias[my_channel] : 0);
       current_input       = gamma * (current_input - mean) * invstd + beta;
@@ -347,11 +346,11 @@ __global__ void BatchNormalizationUpdateOutputKernel(DeviceTensor input,
   }
 
   // Write normalized and update the output
-  const AccReal gamma = ((flags & FIX_GAMMA_FLAG) == 0 && weight.numElements() > 0)
-                            ? ScalarConvert<DType, AccReal>::to(weight[plane])
-                            : ScalarConvert<int, AccReal>::to(1);
-  const AccReal beta  = bias.numElements() > 0 ? ScalarConvert<DType, AccReal>::to(bias[plane])
-                                               : ScalarConvert<int, AccReal>::to(0);
+  const AccReal gamma = ((flags & FIX_GAMMA_FLAG) == 0 && weight.numElements() > 0) ?
+                            ScalarConvert<DType, AccReal>::to(weight[plane]) :
+                            ScalarConvert<int, AccReal>::to(1);
+  const AccReal beta = bias.numElements() > 0 ? ScalarConvert<DType, AccReal>::to(bias[plane]) :
+                                                ScalarConvert<int, AccReal>::to(0);
   for (int batch = 0, nbatch = input.OuterSize(); batch < nbatch; ++batch) {
     for (int x = threadIdx.x, nx = input.InnerSize(); x < nx; x += blockDim.x) {
       const DType inp = input.get_ref(batch, plane, x);
@@ -649,10 +648,10 @@ static __global__ void BatchNormalizationBackwardKernel(const DeviceTensor input
   mean   = ScalarConvert<DType, AccReal>::to(tensors.saveMean[plane]);
   invstd = tensors.saveInvStd[plane];
 
-  const AccReal weightVal = ((flags & FIX_GAMMA_FLAG) == 0 && tensors.weight.numElements() > 0)
-                                ? ScalarConvert<DType, AccReal>::to(tensors.weight[plane])
-                                : AccReal(1);
-  const AccReal norm      = AccReal(1) / N;
+  const AccReal weightVal = ((flags & FIX_GAMMA_FLAG) == 0 && tensors.weight.numElements() > 0) ?
+                                ScalarConvert<DType, AccReal>::to(tensors.weight[plane]) :
+                                AccReal(1);
+  const AccReal norm = AccReal(1) / N;
 
   // Compute two values across (batch, x/y/z) in one pass:
   // 1. Sum(gradOutput)
@@ -936,11 +935,6 @@ static void BatchNormalizationBackward(mshadow::Stream<gpu>* s,
       (flags & IS_TRAINING_FLAG) != 0 && (flags & USE_GLOBAL_STATS_FLAG) == 0;
 
   if (is_train_and_not_global_stats) {
-#ifdef NDEBUG
-    constexpr bool SMALLER_THREADS = false;
-#else
-    constexpr bool SMALLER_THREADS = true;
-#endif
     dim3 blocks(gradOutput.ChannelCount());
     dim3 threads(batchnorm::cuda::getNumThreads(gradOutput.InnerSize()));
     BatchNormalizationBackwardKernel<DType, AccReal, DeviceTensor1, batchnorm::BNTensor3<DType>>
@@ -957,9 +951,9 @@ static void BatchNormalizationBackward(mshadow::Stream<gpu>* s,
     if (tensors.gradBias.numElements() <= 0) {
       flags_copy = (flags_copy & ~WRITE_BETA_FLAG);
     }
-    AccReal* gamma = ((flags & FIX_GAMMA_FLAG) == 0 && tensors.weight.numElements() > 0)
-                         ? tensors.weight.dptr_
-                         : nullptr;
+    AccReal* gamma = ((flags & FIX_GAMMA_FLAG) == 0 && tensors.weight.numElements() > 0) ?
+                         tensors.weight.dptr_ :
+                         nullptr;
 
     if (param.axis == -1 || param.axis == in_data[batchnorm::kData].shape_.ndim() - 1) {
       const int C = gradOutput.ChannelCount();
@@ -1105,19 +1099,6 @@ void BatchNormBackwardImpl(mshadow::Stream<gpu>* stream,
   MSHADOW_CUDA_POST_KERNEL_CHECK(BatchNormOp_DoBackward_gpu);
 }
 
-#if MXNET_USE_CUDNN == 1
-template <typename DType>
-static CuDNNBatchNormOp<DType>& GetCuDNNOp(const BatchNormParam& param) {
-#if DMLC_CXX11_THREAD_LOCAL
-  static thread_local CuDNNBatchNormOp<DType> op;
-#else
-  static MX_THREAD_LOCAL CuDNNBatchNormOp<DType> op;
-#endif
-  op.Init(param);
-  return op;
-}
-#endif
-
 template <>
 void BatchNormCompute<gpu>(const nnvm::NodeAttrs& attrs,
                            const OpContext& ctx,
@@ -1133,9 +1114,9 @@ void BatchNormCompute<gpu>(const nnvm::NodeAttrs& attrs,
 
   param.axis = mxnet::op::batchnorm::GetRealAxis(shape, param.axis);
 #if MXNET_USE_CUDNN == 1
-  if (!param.use_global_stats && !param.cudnn_off) {
-    MSHADOW_REAL_TYPE_SWITCH(
-        dtype, DType, { GetCuDNNOp<DType>(param).Forward(ctx, in_data, req, outputs, aux_states); })
+  if (!param.use_global_stats && !param.cudnn_off &&
+      CudnnBatchNormSupports(param, inputs[batchnorm::kData])) {
+    CudnnBatchNormForward(param, ctx, inputs, req, outputs);
   } else {
     MSHADOW_REAL_TYPE_SWITCH_EX(dtype, DType, AccReal, {
       BatchNormForward<gpu, DType, AccReal>(ctx, param, in_data, req, outputs, aux_states);
@@ -1161,9 +1142,9 @@ void BatchNormGradCompute<gpu>(const nnvm::NodeAttrs& attrs,
 
   param.axis = mxnet::op::batchnorm::GetRealAxis(shape, param.axis);
 #if MXNET_USE_CUDNN == 1
-  if (!param.use_global_stats && !param.cudnn_off) {
-    MSHADOW_REAL_TYPE_SWITCH(
-        dtype, DType, { GetCuDNNOp<DType>(param).Backward(ctx, inputs, req, outputs); })
+  if (!param.use_global_stats && !param.cudnn_off &&
+      CudnnBatchNormSupports(param, inputs[3 + batchnorm::kData])) {
+    CudnnBatchNormBackward(param, ctx, inputs, req, outputs);
   } else {
     MSHADOW_REAL_TYPE_SWITCH_EX(dtype, DType, AccReal, {
       BatchNormBackward<gpu, DType, AccReal>(ctx, param, inputs, req, outputs);

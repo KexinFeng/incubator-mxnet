@@ -18,7 +18,6 @@
  */
 
 /*!
- *  Copyright (c) 2015 by Contributors
  * \file elementwise_unary_op.h
  * \brief Function definition of elementwise unary operators
  */
@@ -36,6 +35,7 @@
 #include "../mshadow_op.h"
 #include "../mxnet_op.h"
 #include "../elemwise_op_common.h"
+#include "../../common/alm.h"
 #include "../../common/utils.h"
 #include "../../ndarray/ndarray_function.h"
 
@@ -244,7 +244,7 @@ class UnaryOp : public OpBase {
                        const std::vector<TBlob>& inputs,
                        const std::vector<OpReqType>& req,
                        const std::vector<TBlob>& outputs) {
-    MSHADOW_TYPE_SWITCH(outputs[0].type_flag_, DType, {
+    MSHADOW_TYPE_SWITCH_EXT(outputs[0].type_flag_, DType, {
       MXNET_ASSIGN_REQ_SWITCH(req[0], Req, {
         if (inputs[0].Size() != 0) {
           mxnet_op::Kernel<mxnet_op::op_with_req<OP, Req>, cpu>::Launch(
@@ -276,7 +276,7 @@ class UnaryOp : public OpBase {
       UnaryOp::Compute<xpu, OP>(attrs, ctx, inputs, req, outputs);
     } else {
       MSHADOW_REAL_TYPE_SWITCH(outputs[0].type_flag_, DType, {
-        MXNET_INT_TYPE_SWITCH(inputs[0].type_flag_, IType, {
+        MXNET_INT_TYPE_SWITCH_EXT_WITH_BOOL(inputs[0].type_flag_, IType, {
           MXNET_ASSIGN_REQ_SWITCH(req[0], Req, {
             if (inputs[0].Size() != 0) {
               mxnet_op::Kernel<mxnet_op::mixed_type_unary_op<OP, Req>, xpu>::Launch(
@@ -295,7 +295,7 @@ class UnaryOp : public OpBase {
                          const std::vector<OpReqType>& req,
                          const std::vector<TBlob>& outputs) {
     mshadow::Stream<xpu>* s = ctx.get_stream<xpu>();
-    MXNET_INT_TYPE_SWITCH(outputs[0].type_flag_, DType, {
+    MXNET_INT_TYPE_SWITCH_EXT_WITH_BOOL(outputs[0].type_flag_, DType, {
       MXNET_ASSIGN_REQ_SWITCH(req[0], Req, {
         if (inputs[0].Size() != 0) {
           mxnet_op::Kernel<mxnet_op::op_with_req<OP, Req>, xpu>::Launch(
@@ -312,7 +312,7 @@ class UnaryOp : public OpBase {
                            const std::vector<OpReqType>& req,
                            const std::vector<TBlob>& outputs) {
     mshadow::Stream<xpu>* s = ctx.get_stream<xpu>();
-    MSHADOW_TYPE_SWITCH_WITH_BOOL(inputs[0].type_flag_, DType, {
+    MSHADOW_TYPE_SWITCH_EXT_WITH_BOOL(inputs[0].type_flag_, DType, {
       MXNET_ASSIGN_REQ_SWITCH(req[0], Req, {
         if (inputs[0].Size() != 0) {
           mxnet_op::Kernel<mxnet_op::op_with_req<OP, Req>, xpu>::Launch(
@@ -400,8 +400,8 @@ class UnaryOp : public OpBase {
         });
       } break;
       case kWriteInplace:
-// cannot check if ptrs are the same for MKLDNN because we may have
-// created copies of input when reordering. WriteInPlace will still write to original array
+// cannot check if ptrs are the same for oneDNN because we may have created
+// copies of input when reordering. WriteInPlace will still write to original array
 #if MXNET_USE_ONEDNN == 0
         CHECK_EQ(inputs[0].dptr_, outputs[0].dptr_);
 #endif
@@ -701,7 +701,7 @@ void AroundOpForward(const nnvm::NodeAttrs& attrs,
           s, out_data.Size(), out_data.dptr<DType>(), in_data.dptr<DType>());
     });
   } else {
-    MSHADOW_TYPE_SWITCH(out_data.type_flag_, DType, {
+    MSHADOW_TYPE_SWITCH_EXT(out_data.type_flag_, DType, {
       MXNET_ASSIGN_REQ_SWITCH(req[0], req_type, {
         Kernel<around_forward<req_type>, xpu>::Launch(
             s, out_data.Size(), out_data.dptr<DType>(), in_data.dptr<DType>(), param.decimals);
@@ -866,6 +866,7 @@ void NumpyNanToNumOpBackward(const nnvm::NodeAttrs& attrs,
       .set_num_outputs(1)                                                                 \
       .set_attr<mxnet::FInferShape>("FInferShape", ElemwiseShape<1, 1>)                   \
       .set_attr<nnvm::FInferType>("FInferType", ElemwiseType<1, 1>)                       \
+      .set_attr<mxnet::alm::FChangeLayout>("FChangeLayout", ElemwiseChangeLayout)         \
       .set_attr<nnvm::FInplaceOption>("FInplaceOption",                                   \
                                       [](const NodeAttrs& attrs) {                        \
                                         return std::vector<std::pair<int, int> >{{0, 0}}; \

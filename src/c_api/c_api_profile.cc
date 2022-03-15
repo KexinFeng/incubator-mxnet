@@ -22,7 +22,6 @@
  */
 
 /*!
- *  Copyright (c) 2017 by Contributors
  * \file c_api_profile.cc
  * \brief C API of mxnet profiler and support functions
  */
@@ -251,7 +250,7 @@ int MXSetProcessProfilerConfig(int num_params,
     CHECK_NOTNULL(vals[i]);
     kwargs.emplace_back(std::make_pair(keys[i], vals[i]));
   }
-  ProfileConfigParam param;
+  ProfileConfigParam param = {};
   param.Init(kwargs);
   if (static_cast<ProfileProcess>(param.profile_process) == ProfileProcess::kServer) {
     std::ostringstream os;

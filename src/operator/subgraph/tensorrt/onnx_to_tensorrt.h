@@ -1,5 +1,3 @@
-#ifndef MXNET_OPERATOR_SUBGRAPH_TENSORRT_ONNX_TO_TENSORRT_H_
-#define MXNET_OPERATOR_SUBGRAPH_TENSORRT_ONNX_TO_TENSORRT_H_
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -20,11 +18,13 @@
  */
 
 /*!
- * Copyright (c) 2019 by Contributors
  * \file onnx_to_tensorrt.h
  * \brief TensorRT integration with the MXNet executor
  * \author Marek Kolodziej, Clement Fuji Tsang
  */
+
+#ifndef MXNET_OPERATOR_SUBGRAPH_TENSORRT_ONNX_TO_TENSORRT_H_
+#define MXNET_OPERATOR_SUBGRAPH_TENSORRT_ONNX_TO_TENSORRT_H_
 
 #if MXNET_USE_TENSORRT
 
@@ -73,11 +73,13 @@ class TRT_Logger : public nvinfer1::ILogger {
       time_t rawtime = std::time(0);
       char buf[256];
       strftime(&buf[0], 256, "%Y-%m-%d %H:%M:%S", std::gmtime(&rawtime));
-      const char* sevstr = (severity == Severity::kINTERNAL_ERROR ? "    BUG"
-                            : severity == Severity::kERROR        ? "  ERROR"
-                            : severity == Severity::kWARNING      ? "WARNING"
-                            : severity == Severity::kINFO         ? "   INFO"
-                                                                  : "UNKNOWN");
+      // clang-format off
+      const char* sevstr = (severity == Severity::kINTERNAL_ERROR ? "    BUG" :
+                            severity == Severity::kERROR          ? "  ERROR" :
+                            severity == Severity::kWARNING        ? "WARNING" :
+                            severity == Severity::kINFO           ? "   INFO" :
+                                                                    "UNKNOWN");
+      // clang-format on
       (*_ostream) << "[" << buf << " " << sevstr << "] " << msg << std::endl;
     }
   }

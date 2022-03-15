@@ -17,9 +17,6 @@
  * under the License.
  */
 
-/**
- * Copyright (c) 2015 by Contributors
- */
 #ifndef MXNET_KVSTORE_COMM_H_
 #define MXNET_KVSTORE_COMM_H_
 #include <dmlc/omp.h>
@@ -168,7 +165,10 @@ class CommCPU : public Comm {
       }
 
       Engine::Get()->PushAsync(
-          [reduce, this](RunContext rctx, Engine::CallbackOnComplete on_complete) {
+          [reduce, this](RunContext rctx,
+                         Engine::CallbackOnStart on_start,
+                         Engine::CallbackOnComplete on_complete) {
+            on_start();
             ReduceSumCPU(reduce);
             on_complete();
           },
@@ -178,7 +178,6 @@ class CommCPU : public Comm {
           FnProperty::kCPUPrioritized,
           priority,
           "KVStoreReduce");
-
     } else {
       // sparse reduce
       std::vector<Engine::VarHandle> const_vars(src.size());
@@ -202,11 +201,14 @@ class CommCPU : public Comm {
       Resource rsc = ResourceManager::Get()->Request(buf_merged.ctx(),
                                                      ResourceRequest(ResourceRequest::kTempSpace));
       Engine::Get()->PushAsync(
-          [reduce, buf_merged, rsc, this](RunContext rctx, Engine::CallbackOnComplete on_complete) {
+          [reduce, buf_merged, rsc, this](RunContext rctx,
+                                          Engine::CallbackOnStart on_start,
+                                          Engine::CallbackOnComplete on_complete) {
+            on_start();
             NDArray out = buf_merged;
-            is_serial_push_
-                ? ReduceSumCPUExSerial(reduce, &out)
-                : mxnet::ndarray::ElementwiseSum(rctx.get_stream<cpu>(), rsc, reduce, &out);
+            is_serial_push_ ?
+                ReduceSumCPUExSerial(reduce, &out) :
+                mxnet::ndarray::ElementwiseSum(rctx.get_stream<cpu>(), rsc, reduce, &out);
             on_complete();
           },
           Context::CPU(),
@@ -261,10 +263,10 @@ class CommCPU : public Comm {
       const bool is_same_ctx = out->ctx() == src.ctx();
       const bool is_diff_var = out->var() != src.var();
       NDArray retained_cpu =
-          (is_same_ctx && is_diff_var)
-              ? *out
-              : NDArray(
-                    kRowSparseStorage, src.shape(), src.ctx(), true, src.dtype(), src.aux_types());
+          (is_same_ctx && is_diff_var) ?
+              *out :
+              NDArray(
+                  kRowSparseStorage, src.shape(), src.ctx(), true, src.dtype(), src.aux_types());
       if (!is_diff_var) {
         common::LogOnce("The output of row_sparse_pull() on key " + std::to_string(key) +
                         "refers to the same NDArray as the one stored in KVStore."
@@ -274,7 +276,10 @@ class CommCPU : public Comm {
                         "consider create a new NDArray buffer to store the output.");
       }
       Engine::Get()->PushAsync(
-          [=](RunContext rctx, Engine::CallbackOnComplete on_complete) {
+          [=](RunContext rctx,
+              Engine::CallbackOnStart on_start,
+              Engine::CallbackOnComplete on_complete) {
+            on_start();
             const TBlob& indices = row_id.data();
             NDArray temp         = retained_cpu;  // get rid the of const qualifier
             op::SparseRetainOpForwardRspImpl<cpu>(
@@ -665,13 +670,11 @@ class CommDevice : public Comm {
       // retain according to indices
       const bool is_same_ctx = out->ctx() == src.ctx();
       const bool is_diff_var = out->var() != src.var();
-      NDArray retained_gpu   = (is_same_ctx && is_diff_var) ? *out
-                                                            : NDArray(kRowSparseStorage,
-                                                                    out->shape(),
-                                                                    src.ctx(),
-                                                                    true,
-                                                                    out->dtype(),
-                                                                    out->aux_types());
+      NDArray retained_gpu =
+          (is_same_ctx && is_diff_var) ?
+              *out :
+              NDArray(
+                  kRowSparseStorage, out->shape(), src.ctx(), true, out->dtype(), out->aux_types());
       if (!is_diff_var) {
         common::LogOnce("The output of row_sparse_pull() on key " + std::to_string(key) +
                         "refers to the same NDArray as the one stored in KVStore."
@@ -682,7 +685,10 @@ class CommDevice : public Comm {
       }
       bool is_gpu = retained_gpu.ctx().dev_mask() == gpu::kDevMask;
       Engine::Get()->PushAsync(
-          [=](RunContext rctx, Engine::CallbackOnComplete on_complete) {
+          [=](RunContext rctx,
+              Engine::CallbackOnStart on_start,
+              Engine::CallbackOnComplete on_complete) {
+            on_start();
             const TBlob& indices = row_id.data();
             using namespace mxnet::common;
             NDArray temp = retained_gpu;
@@ -696,8 +702,6 @@ class CommDevice : public Comm {
               case gpu::kDevMask: {
                 SparseRetainOpForwardRspWrapper<gpu>(
                     rctx.get_stream<gpu>(), src, indices, kWriteTo, &temp);
-                // wait for GPU operations to complete
-                rctx.get_stream<gpu>()->Wait();
                 break;
               }
 #endif

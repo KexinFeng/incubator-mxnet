@@ -29,8 +29,9 @@ from ..base import SymbolHandle
 from ..symbol import Symbol
 from .. import ndarray
 from ..io import DataDesc
-from ..context import cpu, Context
-from ..util import is_np_array
+from ..device import cpu, Device
+from ..util import is_np_array, wrap_ctx_to_device_func
+
 
 def _quantize_params(qsym, params, min_max_dict):
     """Given a quantized symbol and a dict of params that have not been quantized,
@@ -45,7 +46,7 @@ def _quantize_params(qsym, params, min_max_dict):
     qsym : Symbol
         Quantized symbol from FP32 symbol.
     params : dict of str->NDArray
-    min_max_dict: dict of min/max pairs of layers' output
+    min_max_dict : dict of min/max pairs of layers' output
     """
     inputs_name = qsym.list_arguments()
     quantized_params = {}
@@ -86,7 +87,8 @@ def _quantize_params(qsym, params, min_max_dict):
                 quantized_params[name] = array_cls.array([min_max_dict[output][1]])
     return quantized_params
 
-def _quantize_symbol(sym, ctx, excluded_symbols=None, excluded_operators=None,
+
+def _quantize_symbol(sym, device, excluded_symbols=None, excluded_operators=None,
                      offline_params=None, quantized_dtype='int8', quantize_mode='smart',
                      quantize_granularity='tensor-wise'):
     """Given a symbol object representing a neural network of data type FP32,
@@ -96,7 +98,7 @@ def _quantize_symbol(sym, ctx, excluded_symbols=None, excluded_operators=None,
     ----------
     sym : Symbol
         FP32 neural network symbol.
-    ctx : Context
+    device : Device
         Defines the device that users want to run quantized symbol.
     excluded_symbols : list of strings
         A list of strings representing the names of the symbols that users want to excluding
@@ -108,11 +110,11 @@ def _quantize_symbol(sym, ctx, excluded_symbols=None, excluded_operators=None,
         Names of the parameters that users want to quantize offline. It's always recommended to
         quantize parameters offline so that quantizing parameters during the inference can be
         avoided.
-    quantized_dtype: str
+    quantized_dtype : str
         The quantized destination type for input data.
-    quantize_mode: str
+    quantize_mode : str
         The mode that quantization pass to apply.
-    quantize_granularity: str
+    quantize_granularity : str
         The granularity of quantization, currently supports 'tensor-wise' and 'channel-wise'
         quantization. The default value is 'tensor-wise'.
     """
@@ -142,7 +144,7 @@ def _quantize_symbol(sym, ctx, excluded_symbols=None, excluded_operators=None,
     calib_str = ctypes.POINTER(ctypes.c_char_p)()
     check_call(_LIB.MXQuantizeSymbol(sym.handle,
                                      ctypes.byref(out),
-                                     ctypes.byref(ctypes.c_int(ctx.device_typeid)),
+                                     ctypes.byref(ctypes.c_int(device.device_typeid)),
                                      mx_uint(num_excluded_symbols),
                                      c_str_array(excluded_symbols),
                                      mx_uint(num_excluded_ops),
@@ -172,15 +174,16 @@ class CalibrationCollector(object):
     def collect(self, name, op_name, arr):
         """Function which is registered to Block as monitor callback. Names of layers
         requiring calibration are stored in `self.include_layers` variable.
-            Parameters
-            ----------
-            name : str
-                Node name from which collected data comes from
-            op_name : str
-                Operator name from which collected data comes from. Single operator
-                can have multiple inputs/ouputs nodes - each should have different name
-            arr : NDArray
-                NDArray containing data of monitored node
+
+        Parameters
+        ----------
+        name : str
+            Node name from which collected data comes from.
+        op_name : str
+            Operator name from which collected data comes from. Single operator
+            can have multiple input/ouput nodes - each should have different name.
+        arr : NDArray
+            NDArray containing data of monitored node.
         """
 
     def post_collect(self):
@@ -225,8 +228,7 @@ class _LayerHistogramCollector(CalibrationCollector):
 
     @staticmethod
     def combine_histogram(old_hist, arr, new_min, new_max, new_th):
-        """ Collect layer histogram for arr and combine it with old histogram.
-        """
+        """Collect layer histogram for arr and combine it with old histogram."""
         (old_hist, old_hist_edges, old_min, old_max, old_th) = old_hist
         if new_th <= old_th:
             hist, _ = np.histogram(arr, bins=len(old_hist), range=(-old_th, old_th))
@@ -291,6 +293,7 @@ class _LayerHistogramCollector(CalibrationCollector):
                 logger.debug(f"layer={name}, min_val={min_val}, max_val={max_val}, th={th}, divergence={divergence}")
         return th_dict
 
+
 class _LayerOutputMinMaxCollector(CalibrationCollector):
     """Saves layer output min and max values in a dict with layer names as keys.
     The collected min and max values will be directly used as thresholds for quantization.
@@ -319,11 +322,12 @@ class _LayerOutputMinMaxCollector(CalibrationCollector):
             self.logger.debug("Collecting layer %s min_range=%f, max_range=%f"
                               % (name, min_range, max_range))
 
+
 def _calibrate_quantized_sym(qsym, min_max_dict):
     """Given a dictionary containing the thresholds for quantizing the layers,
     set the thresholds into the quantized symbol as the params of requantize operators.
     """
-    if min_max_dict  is None or len(min_max_dict) == 0:
+    if min_max_dict is None or len(min_max_dict) == 0:
         return qsym
     num_layer_outputs = len(min_max_dict)
     layer_output_names = []
@@ -363,8 +367,6 @@ def _collect_layer_statistics(sym_block, data, collector, num_inputs, num_calib_
     return num_batches
 
 
-
-
 def _generate_list_of_data_desc(data_shapes, data_types):
     """"Convert list ot tuples to list of DataDesc."""
     if isinstance(data_shapes, list):
@@ -380,8 +382,9 @@ def _generate_list_of_data_desc(data_shapes, data_types):
     raise ValueError('data_shapes must be either a list of DataDesc or a list of Tuple')
 
 
+@wrap_ctx_to_device_func
 def quantize_model(sym, arg_params, aux_params, data_names=('data',),
-                   ctx=cpu(), excluded_sym_names=None, excluded_op_names=None, calib_mode='entropy',
+                   device=cpu(), excluded_sym_names=None, excluded_op_names=None, calib_mode='entropy',
                    calib_data=None, num_calib_batches=None,
                    quantized_dtype='int8', quantize_mode='smart',
                    quantize_granularity='tensor-wise', logger=None):
@@ -389,26 +392,27 @@ def quantize_model(sym, arg_params, aux_params, data_names=('data',),
     The backend quantized operators are only enabled for Linux systems. Please do not run
     inference using the quantized models on Windows for now.
     The quantization implementation adopts the TensorFlow's approach:
-    https://www.tensorflow.org/performance/quantization.
+    https://www.tensorflow.org/lite/performance/post_training_quantization.
     The calibration implementation borrows the idea of Nvidia's 8-bit Inference with TensorRT:
     http://on-demand.gputechconf.com/gtc/2017/presentation/s7310-8-bit-inference-with-tensorrt.pdf
     and adapts the method to MXNet.
 
     .. _`quantize_model_params`:
+
     Parameters
     ----------
-    sym : str or Symbol
+    sym : Symbol
         Defines the structure of a neural network for FP32 data types.
     arg_params : dict
         Dictionary of name to `NDArray`.
     aux_params : dict
         Dictionary of name to `NDArray`.
-    data_names : a list of strs
+    data_names : list of strings
         Data names required for creating a Module object to run forward propagation on the
         calibration dataset.
-    ctx : Context
+    device : Device
         Defines the device that users want to run forward propagation on the calibration
-        dataset for collecting layer output statistics. Currently, only supports single context.
+        dataset for collecting layer output statistics. Currently, only supports single device.
     excluded_sym_names : list of strings
         A list of strings representing the names of the symbols that users want to excluding
         from being quantized.
@@ -438,7 +442,7 @@ def quantize_model(sym, arg_params, aux_params, data_names=('data',),
         The mode that quantization pass to apply. Support 'full' and 'smart'.
         'full' means quantize all operator if possible.
         'smart' means quantization pass will smartly choice which operator should be quantized.
-    quantize_granularity: str
+    quantize_granularity : str
         The granularity of quantization, currently supports 'tensor-wise' and 'channel-wise'
         quantization. The default value is 'tensor-wise'.
     logger : Object
@@ -446,7 +450,7 @@ def quantize_model(sym, arg_params, aux_params, data_names=('data',),
 
     Returns
     -------
-    quantized_model: tuple
+    quantized_model : tuple
         A tuple of quantized symbol, quantized arg_params, and aux_params.
     """
     warnings.warn('WARNING: This will be deprecated please use quantize_net with Gluon models')
@@ -473,7 +477,7 @@ def quantize_model(sym, arg_params, aux_params, data_names=('data',),
     if quantize_granularity not in ('tensor-wise', 'channel-wise'):
         raise ValueError('unkonwn quantize_granularity %s received,'
                          ' expected `tensor-wise` or `channel-wise`.' % quantize_granularity)
-    qsym, calib_layers = _quantize_symbol(sym, ctx, excluded_symbols=excluded_sym_names,
+    qsym, calib_layers = _quantize_symbol(sym, device, excluded_symbols=excluded_sym_names,
                                           excluded_operators=excluded_op_names,
                                           offline_params=list(arg_params.keys()),
                                           quantized_dtype=quantized_dtype,
@@ -481,8 +485,8 @@ def quantize_model(sym, arg_params, aux_params, data_names=('data',),
                                           quantize_granularity=quantize_granularity)
     min_max_dict = {}
     if calib_mode is not None and calib_mode != 'none':
-        if not isinstance(ctx, Context):
-            raise ValueError('currently only supports single ctx, while received %s' % str(ctx))
+        if not isinstance(device, Device):
+            raise ValueError('currently only supports single device, while received %s' % str(device))
         if calib_data is None:
             raise ValueError('calib_data must be provided when calib_mode=%s' % calib_mode)
         if not isinstance(calib_data, mx.gluon.data.DataLoader):
@@ -527,13 +531,14 @@ def quantize_model(sym, arg_params, aux_params, data_names=('data',),
 
     return qsym, qarg_params, aux_params
 
-def quantize_model_mkldnn(sym, arg_params, aux_params, data_names=('data',),
-                          ctx=cpu(), excluded_sym_names=None, excluded_op_names=None,
+@wrap_ctx_to_device_func
+def quantize_model_onednn(sym, arg_params, aux_params, data_names=('data',),
+                          device=cpu(), excluded_sym_names=None, excluded_op_names=None,
                           calib_mode='entropy', calib_data=None, num_calib_batches=None,
                           quantized_dtype='int8', quantize_mode='smart',
                           quantize_granularity='tensor-wise', logger=None):
     """User-level API for generating a fusion + quantized model from a FP32 model
-    w/ or w/o calibration with Intel MKL-DNN.
+    w/ or w/o calibration with oneDNN.
     The backend quantized operators are only enabled for Linux systems. Please do not run
     inference using the quantized models on Windows for now.
 
@@ -548,16 +553,16 @@ def quantize_model_mkldnn(sym, arg_params, aux_params, data_names=('data',),
     quantized_model: tuple
         A tuple of quantized symbol, quantized arg_params, and aux_params.
     """
-    if not isinstance(ctx, Context):
-        raise ValueError('currently only supports single ctx, while received %s' % str(ctx))
-    if ctx.device_type != 'cpu':
+    if not isinstance(device, Device):
+        raise ValueError('currently only supports single device, while received %s' % str(device))
+    if device.device_type != 'cpu':
         raise ValueError(
-            'quantize_model_mkldnn only support Intel cpu platform with MKL-DNN Backend')
+            'quantize_model_onednn only support Intel cpu platform with oneDNN Backend')
 
-    sym = sym.optimize_for(backend='MKLDNN_QUANTIZE')
+    sym = sym.optimize_for(backend='ONEDNN_QUANTIZE')
 
     qsym, qarg_params, aux_params = quantize_model(sym=sym, arg_params=arg_params, aux_params=aux_params,
-                                                   data_names=data_names, ctx=ctx,
+                                                   data_names=data_names, device=device,
                                                    excluded_sym_names=excluded_sym_names,
                                                    excluded_op_names=excluded_op_names,
                                                    calib_mode=calib_mode, calib_data=calib_data,
@@ -565,11 +570,11 @@ def quantize_model_mkldnn(sym, arg_params, aux_params, data_names=('data',),
                                                    quantized_dtype=quantized_dtype, quantize_mode=quantize_mode,
                                                    quantize_granularity=quantize_granularity, logger=logger)
 
-    qsym = qsym.optimize_for(backend='MKLDNN_QUANTIZE')
+    qsym = qsym.optimize_for(backend='ONEDNN_QUANTIZE')
 
     return qsym, qarg_params, aux_params
 
-def quantize_graph(sym, arg_params, aux_params, ctx=cpu(),
+def quantize_graph(sym, arg_params, aux_params, device=cpu(),
                    excluded_sym_names=None, excluded_op_names=None,
                    calib_mode='entropy', quantized_dtype='int8',
                    quantize_mode='full', quantize_granularity='tensor-wise',
@@ -578,13 +583,14 @@ def quantize_graph(sym, arg_params, aux_params, ctx=cpu(),
     and a collector for naive or entropy calibration.
     The backend quantized operators are only enabled for Linux systems. Please do not run
     inference using the quantized models on Windows for now.
+
     Parameters
     ----------
-    sym : str or Symbol
+    sym : Symbol
         Defines the structure of a neural network for FP32 data types.
-    ctx : Context
+    device : Device
         Defines the device that users want to run forward propagation on the calibration
-        dataset for collecting layer output statistics. Currently, only supports single context.
+        dataset for collecting layer output statistics. Currently, only supports single device.
     arg_params : dict
         Dictionary of name to `NDArray`.
     aux_params : dict
@@ -612,7 +618,7 @@ def quantize_graph(sym, arg_params, aux_params, ctx=cpu(),
         The mode that quantization pass to apply. Support 'full' and 'smart'.
         'full' means quantize all operator if possible.
         'smart' means quantization pass will smartly choice which operator should be quantized.
-    quantize_granularity: str
+    quantize_granularity : str
         The granularity of quantization, currently supports 'tensor-wise' and 'channel-wise'
         quantization. The default value is 'tensor-wise'.
     LayerOutputCollector : subclass of CalibrationCollector
@@ -631,8 +637,8 @@ def quantize_graph(sym, arg_params, aux_params, ctx=cpu(),
         raise ValueError('excluded_sym_names must be a list of strings representing'
                          ' the names of the symbols that will not be quantized,'
                          ' while received type %s' % str(type(excluded_sym_names)))
-    if not isinstance(ctx, Context):
-        raise ValueError('currently only supports single ctx, while received %s' % str(ctx))
+    if not isinstance(device, Device):
+        raise ValueError('currently only supports single device, while received %s' % str(device))
     if logger:
         os.environ['MXNET_QUANTIZATION_VERBOSE'] = '1'
         logger.info('Quantizing graph')
@@ -642,7 +648,7 @@ def quantize_graph(sym, arg_params, aux_params, ctx=cpu(),
     if quantize_granularity not in ('tensor-wise', 'channel-wise'):
         raise ValueError('unkonwn quantize_granularity %s received,'
                          ' expected `tensor-wise` or `channel-wise`.' % quantize_granularity)
-    qsym, calib_layers = _quantize_symbol(sym, ctx, excluded_symbols=excluded_sym_names,
+    qsym, calib_layers = _quantize_symbol(sym, device, excluded_symbols=excluded_sym_names,
                                           excluded_operators=excluded_op_names,
                                           offline_params=list(arg_params.keys()),
                                           quantized_dtype=quantized_dtype,
@@ -696,13 +702,14 @@ def quantize_graph(sym, arg_params, aux_params, ctx=cpu(),
     return qsym, qarg_params, aux_params, collector, calib_layers
 
 def calib_graph(qsym, arg_params, aux_params, collector,
-                calib_mode='entropy', logger=logging):
+                calib_mode='entropy', logger=None):
     """User-level API for calibrating a quantized model using a filled collector.
     The backend quantized operators are only enabled for Linux systems. Please do not run
     inference using the quantized models on Windows for now.
+
     Parameters
     ----------
-    qsym : str or Symbol
+    qsym : Symbol
         Defines the structure of a neural network for INT8 data types.
     arg_params : dict
         Dictionary of name to `NDArray`.
@@ -752,10 +759,11 @@ def calib_graph(qsym, arg_params, aux_params, collector,
 
     return qsym, qarg_params, aux_params
 
+@wrap_ctx_to_device_func
 def quantize_net(network, quantized_dtype='auto', quantize_mode='full', quantize_granularity='tensor-wise',
                  exclude_layers=None, exclude_layers_match=None, exclude_operators=None,
                  calib_data=None, data_shapes=None, calib_mode='none',
-                 num_calib_batches=None, ctx=cpu(), LayerOutputCollector=None, logger=None):
+                 num_calib_batches=None, device=cpu(), LayerOutputCollector=None, logger=None):
     """User-level API for Gluon users to generate a quantized SymbolBlock from a FP32 HybridBlock w/ or w/o calibration.
     The backend quantized operators are only enabled for Linux systems. Please do not run
     inference using the quantized models on Windows for now.
@@ -803,9 +811,9 @@ def quantize_net(network, quantized_dtype='auto', quantize_mode='full', quantize
     num_calib_batches : int or None
         The maximum number of batches that user would like to use for calibration. If not provided,
         the whole calibration dataset will be used.
-    ctx : Context
+    device : Device
         Defines the device that users want to run forward propagation on the calibration
-        dataset for collecting layer output statistics. Currently, only supports single context.
+        dataset for collecting layer output statistics. Currently, only supports single device.
     LayerOutputCollector : subclass of CalibrationCollector
         For `custom` calibration method usage.
         Passed object's include_layers attribute will be feed with names of layers which needs calibration
@@ -819,9 +827,9 @@ def quantize_net(network, quantized_dtype='auto', quantize_mode='full', quantize
     """
     from ..gluon import SymbolBlock
 
-    if ctx != mx.cpu():
-        raise ValueError('Quantization currently supports only CPU context')
-    backend = 'MKLDNN_QUANTIZE'
+    if device != mx.cpu():
+        raise ValueError('Quantization currently supports only CPU device')
+    backend = 'ONEDNN_QUANTIZE'
 
     network.hybridize(static_alloc=False, static_shape=False)
     data_types = None
@@ -897,22 +905,25 @@ def quantize_net(network, quantized_dtype='auto', quantize_mode='full', quantize
         logger.info('These layers have been excluded %s' % exclude_layers)
 
     qsym, qarg_params, aux_params, collector, _ = quantize_graph(
-        sym=symnet, arg_params=args, aux_params=auxs, ctx=ctx,
+        sym=symnet, arg_params=args, aux_params=auxs, device=device,
         excluded_sym_names=exclude_layers, excluded_op_names=exclude_operators,
         calib_mode=calib_mode, quantized_dtype=quantized_dtype, quantize_mode=quantize_mode,
         quantize_granularity=quantize_granularity, LayerOutputCollector=LayerOutputCollector,
         logger=logger)
 
     if calib_mode is not None and calib_mode != 'none':
-        if not isinstance(ctx, Context):
+        if not isinstance(device, Device):
             raise ValueError(
-                'currently only supports single ctx, while received %s' % str(ctx))
+                'currently only supports single device, while received %s' % str(device))
         if calib_data is None:
             raise ValueError(
                 'calib_data must be provided when calib_mode=%s' % calib_mode)
         if calib_mode in ['naive', 'entropy', 'custom']:
             inputs = [mx.sym.var(desc.name) for desc in data_descs]
             calib_net = SymbolBlock(symnet, inputs)
+            for k, v in calib_net.collect_params().items():
+               v.grad_req = 'null'
+
             calib_net.load_dict(params, cast_dtype=True, dtype_source='saved')
             calib_net.hybridize(static_alloc=False, static_shape=False)
             num_batches = _collect_layer_statistics(calib_net, calib_data, collector, num_inputs,
@@ -931,6 +942,9 @@ def quantize_net(network, quantized_dtype='auto', quantize_mode='full', quantize
         inputs = [mx.sym.var(desc.name) for desc in data_descs]
 
     net = SymbolBlock(qsym, inputs)
+    for k, v in net.collect_params().items():
+        v.grad_req = 'null'
+
     all_params = {('arg:%s' % k): v.as_in_context(cpu()) for k, v in qarg_params.items()}
     all_params.update({('aux:%s' % k): v.as_in_context(cpu()) for k, v in aux_params.items()})
     net.load_dict(all_params, cast_dtype=True, dtype_source='saved')

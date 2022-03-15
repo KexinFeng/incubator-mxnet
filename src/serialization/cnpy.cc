@@ -270,7 +270,7 @@ void save_array(const std::string& fname, const NDArray& array_) {
     array = array_;
     array.WaitToRead();
 #if MXNET_USE_ONEDNN == 1
-    if (array.IsMKLDNNData()) {
+    if (array.IsDNNLData()) {
       array = array.Reorder2Default();
     }
 #endif
@@ -476,7 +476,7 @@ void save_array(mz_zip_archive* archive, const std::string& array_name, const ND
     array = array_;
     array.WaitToRead();
 #if MXNET_USE_ONEDNN == 1
-    if (array.IsMKLDNNData()) {
+    if (array.IsDNNLData()) {
       array = array.Reorder2Default();
     }
 #endif
@@ -743,8 +743,8 @@ std::pair<std::vector<NDArray>, std::vector<std::string>> load_arrays(
 
         arrays.push_back(array);
         return_names.emplace_back(dirname.size() ?  // Exclude "/"
-                                      dirname.substr(0, dirname.size() - 1)
-                                                 : dirname);
+                                      dirname.substr(0, dirname.size() - 1) :
+                                      dirname);
 
       } else {
         throw std::runtime_error("Loading " + format + " sparse matrix format is unsupported.");
@@ -881,8 +881,8 @@ std::pair<std::vector<NDArray>, std::vector<std::string>> load_arrays(
 
         arrays.push_back(array);
         return_names.emplace_back(dirname.size() ?  // Exclude "/"
-                                      dirname.substr(0, dirname.size() - 1)
-                                                 : dirname);
+                                      dirname.substr(0, dirname.size() - 1) :
+                                      dirname);
 
       } else {
         throw std::runtime_error("Loading " + format + " sparse matrix format is unsupported.");

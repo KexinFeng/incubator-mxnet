@@ -18,7 +18,6 @@
  */
 
 /*!
- *  Copyright (c) 2019 by Contributors
  * \file np_elemwise_broadcast_op_add.cu
  * \brief GPU Implementation of basic functions for elementwise binary add.
  */
@@ -29,28 +28,34 @@ namespace mxnet {
 namespace op {
 
 NNVM_REGISTER_OP(_npi_add_scalar)
-.set_attr<FCompute>("FCompute<gpu>", BinaryScalarRTCCompute{"add"});
+    .set_attr<FCompute>("FCompute<gpu>", BinaryScalarRTCCompute{"add"});
 
 NNVM_REGISTER_OP(_npi_subtract_scalar)
-.set_attr<FCompute>("FCompute<gpu>", BinaryScalarRTCCompute{"sub"});
+    .set_attr<FCompute>("FCompute<gpu>", BinaryScalarRTCCompute{"sub"});
 
 NNVM_REGISTER_OP(_npi_rsubtract_scalar)
-.set_attr<FCompute>("FCompute<gpu>", BinaryScalarRTCCompute{"rsub"});
+    .set_attr<FCompute>("FCompute<gpu>", BinaryScalarRTCCompute{"rsub"});
 
 NNVM_REGISTER_OP(_npi_multiply_scalar)
-.set_attr<FCompute>("FCompute<gpu>", BinaryScalarRTCCompute{"mul"});
+    .set_attr<FCompute>("FCompute<gpu>", BinaryScalarRTCCompute{"mul"});
 
 NNVM_REGISTER_OP(_npi_mod_scalar)
-.set_attr<FCompute>("FCompute<gpu>", BinaryScalarRTCCompute{"mod"});
+    .set_attr<FCompute>("FCompute<gpu>", BinaryScalarRTCCompute{"mod"});
 
 NNVM_REGISTER_OP(_npi_rmod_scalar)
-.set_attr<FCompute>("FCompute<gpu>", BinaryScalarRTCCompute{"rmod"});
+    .set_attr<FCompute>("FCompute<gpu>", BinaryScalarRTCCompute{"rmod"});
 
 NNVM_REGISTER_OP(_npi_power_scalar)
-.set_attr<FCompute>("FCompute<gpu>", BinaryScalarRTCCompute{"power"});
+    .set_attr<FCompute>("FCompute<gpu>", BinaryScalarRTCCompute{"power"});
 
 NNVM_REGISTER_OP(_npi_rpower_scalar)
-.set_attr<FCompute>("FCompute<gpu>", BinaryScalarRTCCompute{"rpow"});
+    .set_attr<FCompute>("FCompute<gpu>", BinaryScalarRTCCompute{"rpow"});
+
+NNVM_REGISTER_OP(_npi_floor_divide_scalar)
+    .set_attr<FCompute>("FCompute<gpu>", BinaryScalarRTCCompute{"floor_divide"});
+
+NNVM_REGISTER_OP(_npi_rfloor_divide_scalar)
+    .set_attr<FCompute>("FCompute<gpu>", BinaryScalarRTCCompute{"rfloor_divide"});
 
 }  // namespace op
 }  // namespace mxnet

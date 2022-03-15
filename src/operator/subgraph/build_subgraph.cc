@@ -18,7 +18,6 @@
  */
 
 /*!
- *  Copyright (c) 2018 by Contributors
  * \file build_subgraph.cc
  * \brief
  */
@@ -750,6 +749,17 @@ void CreateSubgraphNode(nnvm::Graph* g,
         for (BiDirectedNode* dest_node : subgraph_nodes) {
           sn->outputs.erase(dest_node->node);
         }
+      }
+    }
+
+    // Set outputs according to current inputs
+    for (size_t i = 0; i < n->inputs.size(); ++i) {
+      auto& e = n->inputs[i];
+      // update input entries' source simple nodes' outputs map
+      nnvm::Node* node = e.node.get();
+      if (indexed_graph.exist(node)) {
+        const auto nid     = indexed_graph.node_id(node);
+        BiDirectedNode* sn = simple_nodes[nid].get();
         sn->outputs[n.get()].push_back(i);
       }
     }
@@ -854,9 +864,9 @@ nnvm::Graph BuildSubgraph(nnvm::Graph&& g) {
 
   const SubgraphPropertyPtr& subg_prop = g.GetAttr<SubgraphPropertyPtr>("subgraph_property");
   if (verbose > 1) {
-    const std::string& prop_name = subg_prop->HasAttr("property_name")
-                                       ? subg_prop->GetAttr<std::string>("property_name")
-                                       : "partition graph";
+    const std::string& prop_name = subg_prop->HasAttr("property_name") ?
+                                       subg_prop->GetAttr<std::string>("property_name") :
+                                       "partition graph";
     LOG(INFO) << "start to execute " << prop_name << ".";
   }
   // top sort NodeEntry of all the nodes' inputs

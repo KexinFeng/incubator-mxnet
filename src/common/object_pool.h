@@ -17,9 +17,6 @@
  * under the License.
  */
 
-/*!
- * Copyright (c) 2015 by Contributors
- */
 #ifndef MXNET_COMMON_OBJECT_POOL_H_
 #define MXNET_COMMON_OBJECT_POOL_H_
 #include <dmlc/logging.h>
@@ -64,7 +61,7 @@ class ObjectPool {
    * \brief Get a shared ptr of the singleton instance of pool.
    * \return Shared pointer to the Object Pool.
    */
-  static std::shared_ptr<ObjectPool> _GetSharedRef();
+  static const std::shared_ptr<ObjectPool>& _GetSharedRef();
 
  private:
   /*!
@@ -173,7 +170,7 @@ ObjectPool<T>* ObjectPool<T>::Get() {
 }
 
 template <typename T>
-std::shared_ptr<ObjectPool<T> > ObjectPool<T>::_GetSharedRef() {
+const std::shared_ptr<ObjectPool<T> >& ObjectPool<T>::_GetSharedRef() {
   static std::shared_ptr<ObjectPool<T> > inst_ptr(new ObjectPool<T>());
   return inst_ptr;
 }

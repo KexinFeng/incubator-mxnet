@@ -18,7 +18,6 @@
  */
 
 /*!
- * Copyright (c) 2018 by Contributors
  * \file ravel.cc
  * \brief CPU implementation of operators for ravel/unravel.
  */
@@ -62,6 +61,7 @@ Examples::
 
 NNVM_REGISTER_OP(_unravel_index)
     .add_alias("unravel_index")
+    .add_alias("_npi_unravel_index")
     .describe(
         R"code(Converts an array of flat indices into a batch of index arrays. The operator follows numpy conventions so a single multi index is given by a column of the output matrix. The leading dimension may be left unspecified by using -1 as placeholder.  
 

@@ -18,7 +18,6 @@
  */
 
 /*!
- *  Copyright (c) 2015 by Contributors
  * \file iter_prefetcher.h
  * \brief define a prefetcher using threaditer to keep k batch fetched
  */
@@ -88,9 +87,9 @@ class PrefetcherIter : public IIterator<DataBatch> {
             (*dptr)->index.resize(batch.batch_size);
             for (size_t i = 0; i < batch.data.size(); ++i) {
               auto dtype = param_.dtype ? param_.dtype.value() : batch.data[i].type_flag_;
-              auto ctx   = ((param_.ctx == PrefetcherParam::kCPUPinned) && (param_.device_id >= 0))
-                               ? Context::CPUPinned(param_.device_id)
-                               : Context::CPU();
+              auto ctx = ((param_.ctx == PrefetcherParam::kCPUPinned) && (param_.device_id >= 0)) ?
+                             Context::CPUPinned(param_.device_id) :
+                             Context::CPU();
               (*dptr)->data.at(i) = NDArray(batch.data[i].shape_, ctx, false, dtype);
             }
           }

@@ -1,22 +1,3 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- *
- *   http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
- */
-
 /*!
  * Copyright (c) 2017 Microsoft
  * Licensed under The Apache-2.0 License [see LICENSE for details]
@@ -113,17 +94,17 @@ __global__ void DeformablePSROIPoolForwardKernel(const index_t count,
     index_t part_w   = floor(static_cast<DType>(pw) / pooled_width * part_size);
     index_t class_id = ctop / channels_each_class;
     DType trans_x =
-        no_trans
-            ? static_cast<DType>(0)
-            : bottom_trans[(((n * num_classes + class_id) * 2) * part_size + part_h) * part_size +
-                           part_w] *
-                  trans_std;
+        no_trans ?
+            static_cast<DType>(0) :
+            bottom_trans[(((n * num_classes + class_id) * 2) * part_size + part_h) * part_size +
+                         part_w] *
+                trans_std;
     DType trans_y =
-        no_trans ? static_cast<DType>(0)
-                 : bottom_trans[(((n * num_classes + class_id) * 2 + 1) * part_size + part_h) *
-                                    part_size +
-                                part_w] *
-                       trans_std;
+        no_trans ?
+            static_cast<DType>(0) :
+            bottom_trans[(((n * num_classes + class_id) * 2 + 1) * part_size + part_h) * part_size +
+                         part_w] *
+                trans_std;
 
     DType wstart = static_cast<DType>(pw) * bin_size_w + roi_start_w;
     wstart += trans_x * roi_width;
@@ -267,17 +248,17 @@ __global__ void DeformablePSROIPoolBackwardAccKernel(const index_t count,
     index_t part_w   = floor(static_cast<DType>(pw) / pooled_width * part_size);
     index_t class_id = ctop / channels_each_class;
     DType trans_x =
-        no_trans
-            ? static_cast<DType>(0)
-            : bottom_trans[(((n * num_classes + class_id) * 2) * part_size + part_h) * part_size +
-                           part_w] *
-                  trans_std;
+        no_trans ?
+            static_cast<DType>(0) :
+            bottom_trans[(((n * num_classes + class_id) * 2) * part_size + part_h) * part_size +
+                         part_w] *
+                trans_std;
     DType trans_y =
-        no_trans ? static_cast<DType>(0)
-                 : bottom_trans[(((n * num_classes + class_id) * 2 + 1) * part_size + part_h) *
-                                    part_size +
-                                part_w] *
-                       trans_std;
+        no_trans ?
+            static_cast<DType>(0) :
+            bottom_trans[(((n * num_classes + class_id) * 2 + 1) * part_size + part_h) * part_size +
+                         part_w] *
+                trans_std;
 
     DType wstart = static_cast<DType>(pw) * bin_size_w + roi_start_w;
     wstart += trans_x * roi_width;

@@ -18,7 +18,6 @@
  */
 
 /*!
- * Copyright (c) 2019 by Contributors
  * \file np_unique_op.cc
  */
 
@@ -87,9 +86,10 @@ struct UniqueComputeMaskCPUKernel {
       out_data[i] = 1;
     } else {
       out_data[i] =
-          (std::memcmp(in_data + i * numel, in_data + (i - 1) * numel, numel * sizeof(DType)) == 0)
-              ? 0
-              : 1;
+          (std::memcmp(in_data + i * numel, in_data + (i - 1) * numel, numel * sizeof(DType)) ==
+           0) ?
+              0 :
+              1;
     }
   }
 };

@@ -29,7 +29,7 @@ node('utility') {
   utils = load('ci/Jenkinsfile_utils.groovy')
   custom_steps = load('ci/jenkins/Jenkins_steps.groovy')
 }
-utils.assign_node_labels(utility: 'utility', linux_cpu: 'mxnetlinux-cpu', linux_gpu: 'mxnetlinux-gpu', linux_gpu_p3: 'mxnetlinux-gpu-p3', linux_gpu_g4: 'mxnetlinux-gpu-g4')
+utils.assign_node_labels(utility: 'utility', linux_cpu: 'mxnetlinux-cpu', linux_gpu: 'mxnetlinux-gpu', linux_gpu_p3: 'mxnetlinux-gpu-p3', linux_gpu_g4: 'mxnetlinux-gpu-g4', linux_gpu_g5: 'mxnetlinux-gpu-g5')
 
 utils.main_wrapper(
 core_logic: {
@@ -44,12 +44,15 @@ core_logic: {
 
   utils.parallel_stage('Tests', [
     custom_steps.test_unix_python3_gpu('gpu'),
+    custom_steps.test_unix_python3_ampere_gpu('gpu'),
     custom_steps.test_unix_python3_onednn_gpu('onednn_gpu'),
     custom_steps.test_unix_python3_onednn_nocudnn_gpu('onednn_gpu_nocudnn'),
     custom_steps.test_unix_cpp_package_gpu('gpu'),
+    custom_steps.test_unix_python3_data_interchange_gpu('gpu'),
     // TODO(szha): fix and reenable the hanging issue. tracked in #18098
     // custom_steps.test_unix_distributed_kvstore_gpu('gpu'),
-    custom_steps.test_unix_byteps_gpu('gpu'),
+    // TODO(spanev): reenable when byteps is updated with the new dep engine API
+    // custom_steps.test_unix_byteps_gpu('gpu'),
   ]) 
 }
 ,

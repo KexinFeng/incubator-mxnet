@@ -18,7 +18,6 @@
  */
 
 /*!
- * Copyright (c) 2017 by Contributors
  * \file indexing_op.h
  * \brief Function definition of indexing operator
  * \author Bing Xu, Siyi Li, Chi Zhang, Haibin Lin
@@ -216,8 +215,9 @@ inline bool EmbeddingOpBackwardStorageType(const nnvm::NodeAttrs& attrs,
   return dispatched;
 }
 
-/*! \brief name the struct TakeNonzeroAxis for general take when
- *         axis is not zero, use TakeZeroAxisGPU or TakeZeroAxisCPU for axis zero
+/*! \brief TakeNonzeroAxis is designated for general take when
+ *         axis is not zero (for CPU optimized version use TakeNonZeroAxisCPU and
+           for axis zero use TakeZeroAxisGPU or TakeZeroAxisCPU)
  */
 template <bool clip = true>
 struct TakeNonzeroAxis {
@@ -1085,6 +1085,13 @@ void TakeOpBackward(const nnvm::NodeAttrs& attrs,
       const mxnet::TShape& arrshape = outputs[0].shape_;
       const mxnet::TShape& oshape   = inputs[0].shape_;
 
+      Tensor<xpu, 2, DType> grad_in = outputs[0].get_with_shape<xpu, 2, DType>(
+          Shape2(arrshape[0], arrshape.ProdShape(1, arrshape.ndim())), s);
+
+      if (req[take_::kArr] == kWriteTo) {
+        grad_in = scalar<DType>(0.0f);
+      }
+
       if (idxshape.Size() == 0) {
         return;
       }
@@ -1101,12 +1108,7 @@ void TakeOpBackward(const nnvm::NodeAttrs& attrs,
           inputs[1].get_with_shape<xpu, 1, IType>(Shape1(idxshape.ProdShape(0, idxndim)), s);
       Tensor<xpu, 2, DType> grad_out = inputs[0].get_with_shape<xpu, 2, DType>(
           Shape2(oshape.ProdShape(0, idxndim), oshape.ProdShape(idxndim, oshape.ndim())), s);
-      Tensor<xpu, 2, DType> grad_in = outputs[0].get_with_shape<xpu, 2, DType>(
-          Shape2(arrshape[0], arrshape.ProdShape(1, arrshape.ndim())), s);
 
-      if (req[take_::kArr] == kWriteTo) {
-        grad_in = scalar<DType>(0.0f);
-      }
       // re-using the previous code for axis = 0 case
       if (actual_axis == 0) {
         if (req[take_::kArr] == kWriteTo || req[take_::kArr] == kAddTo) {

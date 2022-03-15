@@ -18,16 +18,16 @@
  */
 
 /*!
- * Copyright (c) 2015 by Contributors
  * \file leaky_relu.cc
  * \brief
  * \author Bing Xu
  */
 
 #include "./leaky_relu-inl.h"
+#include "../common/alm.h"
 #if MXNET_USE_ONEDNN == 1
-#include "./nn/mkldnn/mkldnn_base-inl.h"
-#include "./nn/mkldnn/mkldnn_ops-inl.h"
+#include "./nn/dnnl/dnnl_base-inl.h"
+#include "./nn/dnnl/dnnl_ops-inl.h"
 #endif  // MXNET_USE_ONEDNN == 1
 
 #include <nnvm/op_attr_types.h>
@@ -96,10 +96,10 @@ static void LeakyReLUComputeExCPU(const nnvm::NodeAttrs& attrs,
   const LeakyReLUParam& param = nnvm::get<LeakyReLUParam>(attrs.parsed);
   size_t expected             = param.act_type == leakyrelu::kPReLU ? 2 : 1;
   CHECK_EQ(inputs.size(), expected);
-  if (SupportMKLDNNLeakyRelu(param, inputs[0])) {
-    MKLDNN_OPCHECK_INIT(false, outputs.size(), inputs, outputs);
-    MKLDNNRun(MKLDNNLeakyReluForward, attrs, ctx, inputs[0], req[0], outputs[0]);
-    MKLDNN_OPCHECK_RUN(LeakyReLUCompute<cpu>, attrs, ctx, inputs, req, outputs);
+  if (SupportDNNLLeakyRelu(param, inputs[0])) {
+    DNNL_OPCHECK_INIT(false, outputs.size(), inputs, outputs);
+    DNNLRun(DNNLLeakyReluForward, attrs, ctx, inputs[0], req[0], outputs[0]);
+    DNNL_OPCHECK_RUN(LeakyReLUCompute<cpu>, attrs, ctx, inputs, req, outputs);
     return;
   }
   FallBackCompute(LeakyReLUCompute<cpu>, attrs, ctx, inputs, req, outputs);
@@ -113,11 +113,11 @@ void LeakyReLUGradComputeExCPU(const nnvm::NodeAttrs& attrs,
   if (inputs[0].shape().Size() == 0U)
     return;
   const LeakyReLUParam& param = nnvm::get<LeakyReLUParam>(attrs.parsed);
-  if (SupportMKLDNNLeakyRelu(param, inputs[0])) {
+  if (SupportDNNLLeakyRelu(param, inputs[0])) {
     std::vector<NDArray> in_data{inputs[0], inputs[1]};
-    MKLDNN_OPCHECK_INIT(true, outputs.size(), inputs, outputs);
-    MKLDNNRun(MKLDNNLeakyReluBackward, attrs, ctx, in_data, req, outputs);
-    MKLDNN_OPCHECK_RUN(LeakyReLUGradCompute<cpu>, attrs, ctx, inputs, req, outputs);
+    DNNL_OPCHECK_INIT(true, outputs.size(), inputs, outputs);
+    DNNLRun(DNNLLeakyReluBackward, attrs, ctx, in_data, req, outputs);
+    DNNL_OPCHECK_RUN(LeakyReLUGradCompute<cpu>, attrs, ctx, inputs, req, outputs);
     return;
   }
   FallBackCompute(LeakyReLUGradCompute<cpu>, attrs, ctx, inputs, req, outputs);
@@ -131,8 +131,8 @@ inline static bool LeakyReLUStorageType(const nnvm::NodeAttrs& attrs,
   const LeakyReLUParam& param = nnvm::get<LeakyReLUParam>(attrs.parsed);
   size_t expected             = param.act_type == leakyrelu::kPReLU ? 2 : 1;
   CHECK_EQ(in_attrs->size(), expected);
-  return MKLDNNStorageType(
-      attrs, dev_mask, SupportMKLDNNLeakyRelu(param), dispatch_mode, in_attrs, out_attrs);
+  return DNNLStorageType(
+      attrs, dev_mask, SupportDNNLLeakyRelu(param), dispatch_mode, in_attrs, out_attrs);
 }
 
 inline static bool BackwardLeakyReLUStorageType(const nnvm::NodeAttrs& attrs,
@@ -141,10 +141,21 @@ inline static bool BackwardLeakyReLUStorageType(const nnvm::NodeAttrs& attrs,
                                                 std::vector<int>* in_attrs,
                                                 std::vector<int>* out_attrs) {
   const LeakyReLUParam& param = nnvm::get<LeakyReLUParam>(attrs.parsed);
-  return MKLDNNStorageType(
-      attrs, dev_mask, SupportMKLDNNLeakyRelu(param), dispatch_mode, in_attrs, out_attrs);
+  return DNNLStorageType(
+      attrs, dev_mask, SupportDNNLLeakyRelu(param), dispatch_mode, in_attrs, out_attrs);
 }
 #endif  // MXNET_USE_ONEDNN == 1
+
+static bool LRChangeLayout(nnvm::NodeAttrs* attrs,
+                           mshadow::LayoutFlag target_layout,
+                           std::vector<alm::Transpose>* in_axes,
+                           std::vector<alm::Transpose>* out_axes) {
+  CHECK_EQ(target_layout, mshadow::kUNKNOWN);
+  out_axes->assign(1, alm::FactorCommonTranspose(in_axes));
+  if (attrs->dict["act_type"] == "rrelu")
+    out_axes->resize(2);
+  return false;
+}
 
 NNVM_REGISTER_OP(LeakyReLU)
     .describe(R"code(Applies Leaky rectified linear unit activation element-wise to the input.
@@ -182,23 +193,24 @@ The following modified ReLU Activation functions are supported:
                                      [](const NodeAttrs& attrs) {
                                        const LeakyReLUParam& param =
                                            nnvm::get<LeakyReLUParam>(attrs.parsed);
-                                       return param.act_type == leakyrelu::kPReLU
-                                                  ? std::vector<std::string>{"data", "gamma"}
-                                                  : std::vector<std::string>{"data"};
+                                       return param.act_type == leakyrelu::kPReLU ?
+                                                  std::vector<std::string>{"data", "gamma"} :
+                                                  std::vector<std::string>{"data"};
                                      })
     .set_attr<nnvm::FListOutputNames>("FListOutputNames",
                                       [](const NodeAttrs& attrs) {
                                         const LeakyReLUParam& param =
                                             nnvm::get<LeakyReLUParam>(attrs.parsed);
-                                        return param.act_type == leakyrelu::kRReLU
-                                                   ? std::vector<std::string>{"output", "mask"}
-                                                   : std::vector<std::string>{"output"};
+                                        return param.act_type == leakyrelu::kRReLU ?
+                                                   std::vector<std::string>{"output", "mask"} :
+                                                   std::vector<std::string>{"output"};
                                       })
     .set_attr<mxnet::FInferShape>("FInferShape", LeakyReLUShape)
     .set_attr<nnvm::FInferType>("FInferType", LeakyReLUType)
+    .set_attr<mxnet::alm::FChangeLayout>("FChangeLayout", LRChangeLayout)
     .set_attr<FCompute>("FCompute<cpu>", LeakyReLUCompute<cpu>)
 #if MXNET_USE_ONEDNN == 1
-    .set_attr<bool>("TIsMKLDNN", true)
+    .set_attr<bool>("TIsDNNL", true)
     .set_attr<FComputeEx>("FComputeEx<cpu>", LeakyReLUComputeExCPU)
 #endif
     .set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseInOut{"_backward_LeakyReLU"})
@@ -249,7 +261,7 @@ NNVM_REGISTER_OP(_backward_LeakyReLU)
                                 })
     .set_attr_parser(ParamParser<LeakyReLUParam>)
 #if MXNET_USE_ONEDNN == 1
-    .set_attr<bool>("TIsMKLDNN", true)
+    .set_attr<bool>("TIsDNNL", true)
     .set_attr<FComputeEx>("FComputeEx<cpu>", LeakyReLUGradComputeExCPU)
 #endif
     .set_attr<FCompute>("FCompute<cpu>", LeakyReLUGradCompute<cpu>);

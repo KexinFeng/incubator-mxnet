@@ -18,7 +18,6 @@
  */
 
 /*!
- *  Copyright (c) 2015 by Contributors
  * \file c_api.cc
  * \brief C API of mxnet
  */
@@ -56,6 +55,7 @@
 #include "../operator/tvmop/op_module.h"
 #include "../operator/subgraph/partitioner/custom_subgraph_property.h"
 #include "../operator/subgraph/subgraph_property.h"
+#include "../common/alm.h"
 #include "../common/utils.h"
 #include "../profiler/profiler.h"
 #include "../serialization/cnpy.h"
@@ -164,7 +164,7 @@ void CustomFComputeDispatcher(const std::string op_name,
   std::vector<size_t> in_verIDs, out_verIDs;
   std::vector<const char*> in_dev_type, out_dev_type;
   std::vector<int> in_dev_id, out_dev_id;
-  std::vector<NDArray> conv_mkl;  // converted NDArrays from MKLDNN format
+  std::vector<NDArray> conv_dnnl;  // converted NDArrays from DNNL format
 
   // Extra data for sparse inputs and outputs.
   std::vector<int> in_stypes(inputs.size(), 0), out_stypes(outputs.size(), 0);
@@ -177,11 +177,11 @@ void CustomFComputeDispatcher(const std::string op_name,
   for (size_t i = 0; i < inputs.size(); i++) {
     NDArray const* in_nd = &(inputs[i]);
 #if MXNET_USE_ONEDNN == 1
-    // reorder data if in MKLDNN format
-    if (in_nd->IsMKLDNNData()) {
-      // convert from MKLDNN
-      conv_mkl.push_back(in_nd->Reorder2Default());
-      in_nd = &(conv_mkl.back());
+    // reorder data if in DNNL format
+    if (in_nd->IsDNNLData()) {
+      // convert from DNNL
+      conv_dnnl.push_back(in_nd->Reorder2Default());
+      in_nd = &(conv_dnnl.back());
     }
 #endif
     // pull out parts to pass over to library
@@ -1643,8 +1643,8 @@ void registerPasses(void* lib,
           const NDArray& in_arg = *(in_args_ptr[i]);
 
 #if MXNET_USE_ONEDNN == 1
-          // reorder data if in MKLDNN format
-          if (in_arg.IsMKLDNNData()) {
+          // reorder data if in DNNL format
+          if (in_arg.IsDNNLData()) {
             in_arg.Reorder2DefaultAsync();
             in_arg.WaitToRead();
           }
@@ -1669,8 +1669,8 @@ void registerPasses(void* lib,
           const auto& in_aux = *(in_aux_ptr[i]);
 
 #if MXNET_USE_ONEDNN == 1
-          // reorder data if in MKLDNN format
-          if (in_aux.IsMKLDNNData()) {
+          // reorder data if in DNNL format
+          if (in_aux.IsDNNLData()) {
             in_aux.Reorder2DefaultAsync();
             in_aux.WaitToRead();
           }
@@ -1956,6 +1956,18 @@ int MXGetGPUMemoryInformation64(int dev, uint64_t* free_mem, uint64_t* total_mem
 int MXGetVersion(int* out) {
   API_BEGIN();
   *out = static_cast<int>(MXNET_VERSION);
+  API_END();
+}
+
+int MXGetBranch(const char** out) {
+  API_BEGIN();
+  *out = MXNET_BRANCH;
+  API_END();
+}
+
+int MXGetCommitHash(const char** out) {
+  API_BEGIN();
+  *out = MXNET_COMMIT_HASH;
   API_END();
 }
 
@@ -2558,7 +2570,7 @@ int MXNDArrayGetData(NDArrayHandle handle, void** out_pdata) {
   API_BEGIN();
   NDArray* arr = static_cast<NDArray*>(handle);
 #if MXNET_USE_ONEDNN == 1
-  if (arr->IsMKLDNNData()) {
+  if (arr->IsDNNLData()) {
     arr->Reorder2DefaultAsync();
     arr->WaitToRead();
   }
@@ -2823,8 +2835,8 @@ int MXDataIterGetLabel(DataIterHandle handle, NDArrayHandle* out) {
   // TODO(tianjun) make label 1D when label_width=0
   mxnet::TShape shape = no_label ? TShape({
                                        1,
-                                   })
-                                 : db.data[1].shape();
+                                   }) :
+                                   db.data[1].shape();
   if (no_label || shape.Size() < 1) {
     // it's possible that label is not available and not required
     // but we need to bypass the invalid copy
@@ -3765,6 +3777,7 @@ int MXNDArrayCreateFromSharedMem(int shared_pid,
 }
 
 using VarHandle          = Engine::VarHandle;
+using CallbackOnStart    = Engine::CallbackOnStart;
 using CallbackOnComplete = Engine::CallbackOnComplete;
 
 void AssertValidNumberVars(int num_const_vars, int num_mutable_vars) {
@@ -3796,15 +3809,17 @@ int MXEnginePushAsync(EngineAsyncFunc async_func,
 
   Engine::AsyncFn exec_fn;
   if (deleter == nullptr) {
-    exec_fn = [async_func, func_param](RunContext rctx, CallbackOnComplete on_complete) {
-      async_func(&rctx, &on_complete, func_param);
+    exec_fn = [async_func, func_param](
+                  RunContext rctx, CallbackOnStart on_start, CallbackOnComplete on_complete) {
+      async_func(&rctx, &on_start, &on_complete, func_param);
     };
   } else {
     // Wrap func_param in a shared_ptr with deleter such that deleter
     // will be called when the lambda goes out of scope.
     std::shared_ptr<void> shared_func_param(func_param, deleter);
-    exec_fn = [async_func, shared_func_param](RunContext rctx, CallbackOnComplete on_complete) {
-      async_func(&rctx, &on_complete, shared_func_param.get());
+    exec_fn = [async_func, shared_func_param](
+                  RunContext rctx, CallbackOnStart on_start, CallbackOnComplete on_complete) {
+      async_func(&rctx, &on_start, &on_complete, shared_func_param.get());
     };
   }
 
@@ -3945,7 +3960,25 @@ int MXShallowCopyNDArray(NDArrayHandle src_handle, NDArrayHandle* out) {
   API_END_HANDLE_ERROR(delete ret);
 }
 
-int MXNVTXRangePush(const char * name, mx_uint color) {
+int MXPushStreamDep(NDArrayHandle handle, int stream) {
+  API_BEGIN();
+  static_cast<NDArray*>(handle)->StreamSync(stream);
+  API_END();
+}
+
+int MXGetCurrentStream(int device_id, int* stream) {
+  API_BEGIN();
+#if MXNET_USE_CUDA
+  RunContext rctx{Context::GPU(device_id), new mshadow::Stream<gpu>(), nullptr};
+  mshadow::Stream<gpu>* cur_stream = rctx.get_stream<gpu>();
+  *stream = reinterpret_cast<int64_t>(mshadow::Stream<gpu>::GetStream(cur_stream));
+#else
+  LOG(FATAL) << "GPU is not enabled.";
+#endif
+  API_END();
+}
+
+int MXNVTXRangePush(const char* name, mx_uint color) {
   API_BEGIN();
 #if MXNET_USE_CUDA && MXNET_USE_NVTX
   mxnet::common::cuda::nvtx::gpuRangeStart(color, name);
@@ -3982,5 +4015,17 @@ int MXCUDAProfilerStop() {
 #else
   LOG(FATAL) << "Compile with USE_CUDA=1 and USE_NVTX=1 to have CUDA Profiler support.";
 #endif
+  API_END();
+}
+
+int MXSetOptimizeLayout(bool val) {
+  API_BEGIN();
+  mxnet::alm::ALMParams::get().optimize = val;
+  API_END();
+}
+
+int MXGetOptimizeLayout(bool* val) {
+  API_BEGIN();
+  *val = mxnet::alm::ALMParams::get().optimize;
   API_END();
 }
