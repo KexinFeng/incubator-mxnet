@@ -18,7 +18,6 @@
  */
 
 /*!
- *  Copyright (c) 2014 by Contributors
  * \file stream_gpu-inl.h
  * \brief implementation of GPU code
  * \author Bing Xu, Tianqi Chen
@@ -28,7 +27,7 @@
 #include <memory>
 #include "./base.h"
 #include "./tensor.h"
-#include "./logging.h"
+#include "dmlc/logging.h"
 
 namespace mshadow {
 #if MSHADOW_USE_CUDA == 1

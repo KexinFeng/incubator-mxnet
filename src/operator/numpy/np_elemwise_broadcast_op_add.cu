@@ -18,7 +18,6 @@
  */
 
 /*!
- *  Copyright (c) 2019 by Contributors
  * \file np_elemwise_broadcast_op_add.cu
  * \brief GPU Implementation of basic functions for elementwise binary broadcast add operator.
  */
@@ -28,11 +27,10 @@
 namespace mxnet {
 namespace op {
 
-NNVM_REGISTER_OP(_npi_add)
-.set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCCompute{"add"});
+NNVM_REGISTER_OP(_npi_add).set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCCompute{"add"});
 
 NNVM_REGISTER_OP(_backward_npi_broadcast_add)
-.set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCBackwardUseIn{"one", "one"});
+    .set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCBackwardUseIn{"one", "one"});
 
 }  // namespace op
 }  // namespace mxnet

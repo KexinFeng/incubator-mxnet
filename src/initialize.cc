@@ -18,11 +18,11 @@
  */
 
 /*!
- *  Copyright (c) 2016 by Contributors
  * \file initialize.cc
  * \brief initialize mxnet library
  */
 #include "initialize.h"
+
 #include <algorithm>
 #include <csignal>
 
@@ -53,8 +53,9 @@ void win_err(char** err) {
 #endif
 
 #include <dmlc/logging.h>
-#include <mxnet/engine.h>
 #include <mxnet/c_api.h>
+#include <mxnet/engine.h>
+
 #include "./engine/openmp.h"
 #include "./operator/custom/custom-inl.h"
 #if MXNET_USE_OPENCV
@@ -62,6 +63,10 @@ void win_err(char** err) {
 #endif  // MXNET_USE_OPENCV
 #include "common/utils.h"
 #include "engine/openmp.h"
+
+#if defined(MKL_USE_SINGLE_DYNAMIC_LIBRARY)
+#include <mkl.h>
+#endif
 
 namespace mxnet {
 
@@ -90,6 +95,7 @@ LibraryInitializer::LibraryInitializer()
       cpu_worker_nthreads_(dmlc::GetEnv("MXNET_CPU_WORKER_NTHREADS", 1)),
       mp_cv_num_threads_(dmlc::GetEnv("MXNET_MP_OPENCV_NUM_THREADS", 0)) {
   dmlc::InitLogging("mxnet");
+  init_mkl_dynamic_library();
   engine::OpenMP::Get();  // force OpenMP initialization
   install_pthread_atfork_handlers();
 }
@@ -97,7 +103,7 @@ LibraryInitializer::LibraryInitializer()
 LibraryInitializer::~LibraryInitializer() = default;
 
 bool LibraryInitializer::lib_is_loaded(const std::string& path) const {
-  return loaded_libs.count(path) > 0;
+  return loaded_libs_.count(path) > 0;
 }
 
 /*!
@@ -133,9 +139,9 @@ void* LibraryInitializer::lib_load(const char* path) {
     }
 #endif  // _WIN32 or _WIN64 or __WINDOWS__
     // then store the pointer to the library
-    loaded_libs[path] = handle;
+    loaded_libs_[path] = handle;
   } else {
-    handle = loaded_libs.at(path);
+    handle = loaded_libs_.at(path);
   }
   return handle;
 }
@@ -144,15 +150,7 @@ void* LibraryInitializer::lib_load(const char* path) {
  * \brief Closes the loaded dynamic shared library file
  * \param handle library file handle
  */
-void LibraryInitializer::lib_close(void* handle) {
-  std::string libpath;
-  for (const auto& l : loaded_libs) {
-    if (l.second == handle) {
-      libpath = l.first;
-      break;
-    }
-  }
-  CHECK(!libpath.empty());
+void LibraryInitializer::lib_close(void* handle, const std::string& libpath) {
 #if defined(_WIN32) || defined(_WIN64) || defined(__WINDOWS__)
   FreeLibrary((HMODULE)handle);
 #else
@@ -161,7 +159,6 @@ void LibraryInitializer::lib_close(void* handle) {
                  << " loaded from: '" << libpath << "': " << dlerror();
   }
 #endif  // _WIN32 or _WIN64 or __WINDOWS__
-  loaded_libs.erase(libpath);
 }
 
 /*!
@@ -221,6 +218,25 @@ void LibraryInitializer::install_pthread_atfork_handlers() {
 #ifndef _WIN32
   engine::OpenMP::Get()->initialize_process();  // force omp to set its atfork handler first
   pthread_atfork(pthread_atfork_prepare, pthread_atfork_parent, pthread_atfork_child);
+#endif
+}
+
+void LibraryInitializer::init_mkl_dynamic_library() {
+#if !(defined(_WIN32) || defined(_WIN64) || defined(__WINDOWS__))
+#if MKL_USE_SINGLE_DYNAMIC_LIBRARY
+#if USE_INT64_TENSOR_SIZE
+  int interface = MKL_INTERFACE_ILP64;
+#else
+  int interface = MKL_INTERFACE_LP64;
+#endif
+#if defined(__INTEL_LLVM_COMPILER) || defined(__APPLE__)
+  mkl_set_threading_layer(MKL_THREADING_INTEL);
+#else
+  mkl_set_threading_layer(MKL_THREADING_GNU);
+  interface += MKL_INTERFACE_GNU;
+#endif
+  mkl_set_interface_layer(interface);
+#endif
 #endif
 }
 
@@ -368,9 +384,10 @@ SIGNAL_HANDLER(SIGBUS, SIGBUSHandler, false);
 #endif
 
 void LibraryInitializer::close_open_libs() {
-  for (const auto& l : loaded_libs) {
-    lib_close(l.second);
+  for (const auto& l : loaded_libs_) {
+    lib_close(l.second, l.first);
   }
+  loaded_libs_.clear();
 }
 
 /**

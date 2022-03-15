@@ -17,7 +17,6 @@
  * under the License.
  */
 /*!
- * Copyright (c) 2018 by Contributors
  * \file adaptive_avg_pooling-inl.h
  * \brief adaptive average pooling operator
  * \author Hang Zhang
@@ -43,18 +42,10 @@
 #include "../operator_common.h"
 #include "../mxnet_op.h"
 #include "../mshadow_op.h"
+#include "../nn/pooling-inl.h"
 
 namespace mxnet {
 namespace op {
-
-struct AdaptiveAvgPoolParam : public dmlc::Parameter<AdaptiveAvgPoolParam> {
-  mxnet::Tuple<int> output_size;
-  DMLC_DECLARE_PARAMETER(AdaptiveAvgPoolParam) {
-    DMLC_DECLARE_FIELD(output_size)
-        .set_default(mxnet::Tuple<int>())
-        .describe("int (output size) or a tuple of int for output (height, width).");
-  }
-};
 
 static inline bool IsWriting(const OpReqType ort) {
   return ort == kWriteTo || ort == kWriteInplace;
@@ -104,6 +95,7 @@ inline void AdaptiveAvgPoolOpBackward(const nnvm::NodeAttrs& attrs,
                                       const std::vector<TBlob>& outputs) {
   CHECK_EQ(inputs.size(), 1U);
   CHECK_EQ(outputs.size(), 1U);
+
   mshadow::Stream<xpu>* s = ctx.get_stream<xpu>();
   if (IsWriting(req[0])) {
     // zero grad before backwarding
@@ -120,19 +112,22 @@ static bool AdaptiveAvgPoolOpInferShape(const nnvm::NodeAttrs& attrs,
   using namespace mshadow;
   CHECK_EQ(in_shape->size(), 1U) << "Input:[data]";
   CHECK_EQ(out_shape->size(), 1U) << "Output:[data]";
-  const AdaptiveAvgPoolParam& param = nnvm::get<AdaptiveAvgPoolParam>(attrs.parsed);
+  const PoolingParam& param = nnvm::get<PoolingParam>(attrs.parsed);
   mxnet::TShape dshape(in_shape->at(0));
-  if (mxnet::op::shape_is_none(dshape))
+  if (mxnet::op::shape_is_none(dshape)) {
     return false;
-  if (param.output_size.ndim() == 0) {
-    dshape[2] = 1;
-    dshape[3] = 1;
-  } else if (param.output_size.ndim() == 1) {
-    dshape[2] = param.output_size[0];
-    dshape[3] = param.output_size[0];
-  } else if (param.output_size.ndim() == 2) {
-    dshape[2] = param.output_size[0];
-    dshape[3] = param.output_size[1];
+  }
+  if (param.IsAdaptivePooling()) {
+    if (param.output_size.value().ndim() == 1) {
+      dshape[2] = param.output_size.value()[0];
+      dshape[3] = param.output_size.value()[0];
+    } else if (param.output_size.value().ndim() == 2) {
+      dshape[2] = param.output_size.value()[0];
+      dshape[3] = param.output_size.value()[1];
+    } else {
+      dshape[2] = 1;
+      dshape[3] = 1;
+    }
   } else {
     dshape[2] = 1;
     dshape[3] = 1;

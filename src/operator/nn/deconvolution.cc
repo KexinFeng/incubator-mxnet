@@ -18,7 +18,6 @@
  */
 
 /*!
- * Copyright (c) 2015 by Contributors
  * \file deconvolution.cc
  * \brief
  * \author Wei Wu, Da Zheng
@@ -26,10 +25,11 @@
 
 #include "./deconvolution-inl.h"
 #include "../operator_common.h"
+#include "../../common/alm.h"
 #include "../../common/utils.h"
 #if MXNET_USE_ONEDNN == 1
-#include "./mkldnn/mkldnn_base-inl.h"
-#include "./mkldnn/mkldnn_ops-inl.h"
+#include "./dnnl/dnnl_base-inl.h"
+#include "./dnnl/dnnl_ops-inl.h"
 #endif  // MXNET_USE_ONEDNN
 
 namespace mxnet {
@@ -42,10 +42,10 @@ static void DeconvolutionComputeExCPU(const nnvm::NodeAttrs& attrs,
                                       const std::vector<OpReqType>& req,
                                       const std::vector<NDArray>& outputs) {
   const DeconvolutionParam& params = nnvm::get<DeconvolutionParam>(attrs.parsed);
-  if (SupportMKLDNNDeconv(params, inputs[0])) {
-    MKLDNN_OPCHECK_INIT(false, outputs.size(), inputs, outputs);
-    MKLDNNRun(MKLDNNDeconvolutionForward, attrs, ctx, inputs, req, outputs);
-    MKLDNN_OPCHECK_RUN(DeconvolutionCompute<cpu>, attrs, ctx, inputs, req, outputs);
+  if (SupportDNNLDeconv(params, inputs[0])) {
+    DNNL_OPCHECK_INIT(false, outputs.size(), inputs, outputs);
+    DNNLRun(DNNLDeconvolutionForward, attrs, ctx, inputs, req, outputs);
+    DNNL_OPCHECK_RUN(DeconvolutionCompute<cpu>, attrs, ctx, inputs, req, outputs);
     return;
   }
   FallBackCompute(DeconvolutionCompute<cpu>, attrs, ctx, inputs, req, outputs);
@@ -57,10 +57,10 @@ static void DeconvolutionGradComputeExCPU(const nnvm::NodeAttrs& attrs,
                                           const std::vector<OpReqType>& req,
                                           const std::vector<NDArray>& outputs) {
   const DeconvolutionParam& params = nnvm::get<DeconvolutionParam>(attrs.parsed);
-  if (SupportMKLDNNDeconv(params, inputs[0])) {
-    MKLDNN_OPCHECK_INIT(true, outputs.size(), inputs, outputs);
-    MKLDNNRun(MKLDNNDeconvolutionBackward, attrs, ctx, inputs, req, outputs);
-    MKLDNN_OPCHECK_RUN(DeconvolutionGradCompute<cpu>, attrs, ctx, inputs, req, outputs);
+  if (SupportDNNLDeconv(params, inputs[0])) {
+    DNNL_OPCHECK_INIT(true, outputs.size(), inputs, outputs);
+    DNNLRun(DNNLDeconvolutionBackward, attrs, ctx, inputs, req, outputs);
+    DNNL_OPCHECK_RUN(DeconvolutionGradCompute<cpu>, attrs, ctx, inputs, req, outputs);
     return;
   }
   FallBackCompute(DeconvolutionGradCompute<cpu>, attrs, ctx, inputs, req, outputs);
@@ -76,7 +76,7 @@ inline static bool DeconvStorageType(const nnvm::NodeAttrs& attrs,
   CHECK_EQ(in_attrs->size(), in_expected);
   CHECK_EQ(out_attrs->size(), 1);
 
-  return MKLDNNStorageType(attrs, dev_mask, true, dispatch_mode, in_attrs, out_attrs);
+  return DNNLStorageType(attrs, dev_mask, true, dispatch_mode, in_attrs, out_attrs);
 }
 
 inline static bool BackwardDeconvStorageType(const nnvm::NodeAttrs& attrs,
@@ -90,7 +90,7 @@ inline static bool BackwardDeconvStorageType(const nnvm::NodeAttrs& attrs,
   CHECK_EQ(in_attrs->size(), in_expected);
   CHECK_EQ(out_attrs->size(), out_expected);
 
-  return MKLDNNStorageType(attrs, dev_mask, true, dispatch_mode, in_attrs, out_attrs);
+  return DNNLStorageType(attrs, dev_mask, true, dispatch_mode, in_attrs, out_attrs);
 }
 #endif
 
@@ -98,12 +98,6 @@ static bool DeconvolutionShape(const nnvm::NodeAttrs& attrs,
                                mxnet::ShapeVector* in_shape,
                                mxnet::ShapeVector* out_shape) {
   const DeconvolutionParam& param_ = nnvm::get<DeconvolutionParam>(attrs.parsed);
-#if MXNET_USE_CUDNN == 0
-  if (param_.kernel.ndim() > 2) {
-    LOG(FATAL) << "If not using CUDNN, only 1D or 2D Deconvolution is supported";
-    return false;
-  }
-#endif  // CUDNN
 
   using namespace mshadow;
   if (!param_.no_bias) {
@@ -408,14 +402,37 @@ struct DeconvolutionGrad {
   }
 };
 
+static bool DeconvChangeLayout(nnvm::NodeAttrs* attrs,
+                               mshadow::LayoutFlag target_layout,
+                               std::vector<alm::Transpose>* in_axes,
+                               std::vector<alm::Transpose>* out_axes) {
+  const auto& param = nnvm::get<DeconvolutionParam>(attrs->parsed);
+  CHECK(param.layout) << "Current layout of convolution should be known: " << attrs->name;
+  auto layout = static_cast<mshadow::LayoutFlag>(param.layout.value());
+  auto t      = target_layout != mshadow::kUNKNOWN ?
+               mshadow::getTranspAxes<size_t>(layout, target_layout) :
+               alm::FactorCommonTranspose(in_axes);
+  out_axes->assign(1, alm::Reverse(t));
+  if (alm::IsIdentity(t))
+    return false;
+  if (target_layout != mshadow::kUNKNOWN) {
+    for (auto i : {0, 1})
+      in_axes->at(i) = alm::Compose(t, in_axes->at(i));
+  } else {
+    target_layout = alm::ApplyTranspose(layout, t);
+  }
+  attrs->dict["layout"] = mshadow::toString(target_layout);
+  return true;
+}
+
 DMLC_REGISTER_PARAMETER(DeconvolutionParam);
 
 NNVM_REGISTER_OP(Deconvolution)
     .add_alias("_npx_deconvolution")
     .describe(
-        "Computes 1D or 2D transposed convolution (aka fractionally strided convolution) of the "
-        "input tensor. This operation can be seen as the gradient of Convolution operation with "
-        "respect to its input. Convolution usually reduces the size of the input. Transposed "
+        "Computes 1D, 2D or 3D transposed convolution (aka fractionally strided convolution) of "
+        "the input tensor. This operation can be seen as the gradient of Convolution operation "
+        "with respect to its input. Convolution usually reduces the size of the input. Transposed "
         "convolution works the other way, going from a smaller input to a larger output while "
         "preserving the connectivity pattern.")
     .set_num_inputs([](const NodeAttrs& attrs) {
@@ -435,6 +452,7 @@ NNVM_REGISTER_OP(Deconvolution)
                                       })
     .set_attr<mxnet::FInferShape>("FInferShape", DeconvolutionShape)
     .set_attr<nnvm::FInferType>("FInferType", DeconvolutionType)
+    .set_attr<mxnet::alm::FChangeLayout>("FChangeLayout", DeconvChangeLayout)
     .set_attr<FResourceRequest>("FResourceRequest",
                                 [](const NodeAttrs& n) {
                                   return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
@@ -443,7 +461,7 @@ NNVM_REGISTER_OP(Deconvolution)
     .set_attr<FCompute>("FCompute<cpu>", DeconvolutionCompute<cpu>)
     .set_attr<nnvm::FGradient>("FGradient", DeconvolutionGrad{"_backward_Deconvolution"})
 #if MXNET_USE_ONEDNN == 1
-    .set_attr<bool>("TIsMKLDNN", true)
+    .set_attr<bool>("TIsDNNL", true)
     .set_attr<FInferStorageType>("FInferStorageType", DeconvStorageType)
     .set_attr<FComputeEx>("FComputeEx<cpu>", DeconvolutionComputeExCPU)
 #endif
@@ -471,7 +489,7 @@ NNVM_REGISTER_OP(_backward_Deconvolution)
                                 })
     .set_attr_parser(DeconvolutionParamParser)
 #if MXNET_USE_ONEDNN == 1
-    .set_attr<bool>("TIsMKLDNN", true)
+    .set_attr<bool>("TIsDNNL", true)
     .set_attr<FInferStorageType>("FInferStorageType", BackwardDeconvStorageType)
     .set_attr<FComputeEx>("FComputeEx<cpu>", DeconvolutionGradComputeExCPU)
 #endif

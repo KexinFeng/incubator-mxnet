@@ -18,7 +18,6 @@
  */
 
 /*!
- * Copyright (c) 2019 by Contributors
  * \file np_lstsq.cc
  * \brief CPU implementation of the lstsq Operator
  */
@@ -55,9 +54,9 @@ inline bool LstsqOpType(const nnvm::NodeAttrs& attrs,
   CHECK(b_type == mshadow::kFloat32 || b_type == mshadow::kFloat64)
       << "lstsq operation only supports 32-bit and 64-bit floating point";
 
-  const mshadow::TypeFlag floatFlag = (mshadow::kFloat32 == a_type && mshadow::kFloat32 == b_type)
-                                          ? mshadow::kFloat32
-                                          : mshadow::kFloat64;
+  const mshadow::TypeFlag floatFlag = (mshadow::kFloat32 == a_type && mshadow::kFloat32 == b_type) ?
+                                          mshadow::kFloat32 :
+                                          mshadow::kFloat64;
   TYPE_ASSIGN_CHECK(*out_attrs, 0, floatFlag);
   TYPE_ASSIGN_CHECK(*out_attrs, 1, floatFlag);
   TYPE_ASSIGN_CHECK(*out_attrs, 2, index_type_flag);

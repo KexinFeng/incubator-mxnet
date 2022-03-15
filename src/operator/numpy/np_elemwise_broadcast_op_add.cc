@@ -18,7 +18,6 @@
  */
 
 /*!
- *  Copyright (c) 2019 by Contributors
  * \file np_elemwise_binary_op_add.cc
  * \brief CPU Implementation of basic functions for elementwise numpy binary add.
  */
@@ -29,26 +28,31 @@ namespace mxnet {
 namespace op {
 
 MXNET_OPERATOR_REGISTER_NP_BINARY_MIXED_PRECISION(_npi_add)
-.set_attr<FCompute>(
-  "FCompute<cpu>",
-  NumpyBinaryBroadcastComputeWithBool<cpu, op::mshadow_op::plus, op::mshadow_op::mixed_plus,
-                                      op::mshadow_op::mixed_plus>)
-.set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseIn{"_backward_npi_broadcast_add"});
+    .set_attr<FCompute>("FCompute<cpu>",
+                        NumpyBinaryBroadcastComputeWithBool<cpu,
+                                                            op::mshadow_op::plus,
+                                                            op::mshadow_op::mixed_plus,
+                                                            op::mshadow_op::mixed_plus>)
+#if MXNET_USE_ONEDNN == 1
+    .set_attr<FComputeEx>("FComputeEx<cpu>", NumpyBinaryOperatorComputeExCPU<op::mshadow_op::plus>)
+    .set_attr<FInferStorageType>("FInferStorageType", NumpyBinaryBroadcastStorageType)
+#endif  // MXNET_USE_ONEDNN
+    .set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseIn{"_backward_npi_broadcast_add"});
 
 NNVM_REGISTER_OP(_backward_npi_broadcast_add)
-.set_num_inputs(3)
-.set_num_outputs(2)
-.set_attr<nnvm::TIsBackward>("TIsBackward", true)
-.set_attr<nnvm::FInplaceOption>("FInplaceOption",
-  [](const NodeAttrs& attrs){
-    return std::vector<std::pair<int, int> >{{0, 0}, {0, 1}};
-  })
-.set_attr<FResourceRequest>("FResourceRequest",
-  [](const NodeAttrs& attrs) {
-    return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
-  })
-.set_attr<FCompute>("FCompute<cpu>", NumpyBinaryBackwardUseIn<cpu, mshadow_op::posone,
-                                                                mshadow_op::posone>);
+    .set_num_inputs(3)
+    .set_num_outputs(2)
+    .set_attr<nnvm::TIsBackward>("TIsBackward", true)
+    .set_attr<nnvm::FInplaceOption>("FInplaceOption",
+                                    [](const NodeAttrs& attrs) {
+                                      return std::vector<std::pair<int, int> >{{0, 0}, {0, 1}};
+                                    })
+    .set_attr<FResourceRequest>("FResourceRequest",
+                                [](const NodeAttrs& attrs) {
+                                  return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
+                                })
+    .set_attr<FCompute>("FCompute<cpu>",
+                        NumpyBinaryBackwardUseIn<cpu, mshadow_op::posone, mshadow_op::posone>);
 
 }  // namespace op
 }  // namespace mxnet

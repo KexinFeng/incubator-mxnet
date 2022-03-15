@@ -18,7 +18,6 @@
  */
 
 /*!
- *  Copyright (c) 2019 by Contributors
  * \file np_true_divide.cc
  * \brief CPU Implementation of true_divide operator.
  */
@@ -31,7 +30,7 @@ namespace op {
 int TrueDivideOutType(int ltype, int rtype) {
   if (common::is_float(ltype) && common::is_float(rtype)) {
     // If both inputs are float, return the one with the higher precision
-    return common::get_more_precise_type(ltype, rtype);
+    return common::type_promotion(ltype, rtype);
   } else if (common::is_float(ltype) || common::is_float(rtype)) {
     // If only one of the inputs is float, return that float type
     return (common::is_float(ltype)) ? ltype : rtype;
@@ -55,12 +54,22 @@ bool TrueDivideType(const nnvm::NodeAttrs& attrs,
 
   const int lhs_dtype = in_attrs->at(0);
   const int rhs_dtype =
-      (num_inputs == 2)
-          ? in_attrs->at(1)
-          : (common::is_float(lhs_dtype) ? lhs_dtype : mxnet::common::GetDefaultDtype());
+      (num_inputs == 2) ?
+          in_attrs->at(1) :
+          (common::is_float(lhs_dtype) ? lhs_dtype : mxnet::common::GetDefaultDtype());
   TYPE_ASSIGN_CHECK(*out_attrs, 0, TrueDivideOutType(lhs_dtype, rhs_dtype));
   return true;
 }
+
+#if MXNET_USE_ONEDNN == 1
+void NumpyDivideBroadcastComputeCPU(const nnvm::NodeAttrs& attrs,
+                                    const OpContext& ctx,
+                                    const std::vector<TBlob>& inputs,
+                                    const std::vector<OpReqType>& req,
+                                    const std::vector<TBlob>& outputs) {
+  TrueDivideBroadcastCompute<cpu>(attrs, ctx, inputs, req, outputs);
+}
+#endif  // MXNET_USE_ONEDNN
 
 NNVM_REGISTER_OP(_npi_true_divide)
     .set_num_inputs(2)
@@ -75,7 +84,15 @@ NNVM_REGISTER_OP(_npi_true_divide)
                                     [](const NodeAttrs& attrs) {
                                       return std::vector<std::pair<int, int> >{{0, 0}, {1, 0}};
                                     })
+    .set_attr<FResourceRequest>("FResourceRequest",
+                                [](const NodeAttrs& attrs) {
+                                  return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
+                                })
     .set_attr<FCompute>("FCompute<cpu>", TrueDivideBroadcastCompute<cpu>)
+#if MXNET_USE_ONEDNN == 1
+    .set_attr<FComputeEx>("FComputeEx<cpu>", NumpyBinaryOperatorComputeExCPU<op::mshadow_op::div>)
+    .set_attr<FInferStorageType>("FInferStorageType", NumpyBinaryBroadcastStorageType)
+#endif  // MXNET_USE_ONEDNN
     .set_attr<nnvm::FGradient>("FGradient", ElemwiseGradUseIn{"_backward_npi_broadcast_div"})
     .add_argument("lhs", "NDArray-or-Symbol", "Dividend array")
     .add_argument("rhs", "NDArray-or-Symbol", "Divisor array");

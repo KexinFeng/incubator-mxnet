@@ -1,5 +1,3 @@
-#ifndef MXNET_OPERATOR_SUBGRAPH_TENSORRT_TENSORRT_INL_H_
-#define MXNET_OPERATOR_SUBGRAPH_TENSORRT_TENSORRT_INL_H_
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -20,11 +18,13 @@
  */
 
 /*!
- * Copyright (c) 2019 by Contributors
  * \file tensorrt-inl.h
  * \brief TensorRT operation registration
  * \author Marek Kolodziej, Clement Fuji Tsang
  */
+
+#ifndef MXNET_OPERATOR_SUBGRAPH_TENSORRT_TENSORRT_INL_H_
+#define MXNET_OPERATOR_SUBGRAPH_TENSORRT_TENSORRT_INL_H_
 
 #if MXNET_USE_TENSORRT
 
@@ -192,8 +192,9 @@ class TensorrtSelector : public SubgraphSelector {
     }
 
     if (op_name == "Concat") {
-      const auto& param = nnvm::get<ConcatParam>(n.attrs.parsed);
-      return (param.dim != 0);
+      const auto& param   = nnvm::get<ConcatParam>(n.attrs.parsed);
+      const int param_dim = param.dim.has_value() ? param.dim.value() : 0;
+      return (param_dim != 0);
     }
 
     if (op_name == "Dropout") {

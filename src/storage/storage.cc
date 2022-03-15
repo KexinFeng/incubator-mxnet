@@ -17,9 +17,6 @@
  * under the License.
  */
 
-/*!
- * Copyright (c) 2015 by Contributors
- */
 #include <mxnet/storage.h>
 #include "./storage_manager.h"
 #include "./naive_storage_manager.h"
@@ -37,7 +34,7 @@ namespace storage {
 // consider change storage as a pure abstract class
 class StorageImpl : public Storage {
  public:
-  void Alloc(Handle* handle) override;
+  void Alloc(Handle* handle, bool failsafe) override;
   void Free(Handle handle) override;
   void DirectFree(Handle handle) override;
   void ReleaseAll(Context ctx) override {
@@ -93,7 +90,7 @@ StorageManager* CreateStorageManager(const Context& ctx,
   return ptr;
 }
 
-void StorageImpl::Alloc(Storage::Handle* handle) {
+void StorageImpl::Alloc(Storage::Handle* handle, bool failsafe) {
   // Set dptr to nullptr when handle size is 0.
   if (handle->size == 0) {
     handle->dptr = nullptr;
@@ -207,8 +204,9 @@ void StorageImpl::Alloc(Storage::Handle* handle) {
     return ptr;
   });
 
-  manager->Alloc(handle);
-  profiler_.OnAlloc(*handle);
+  manager->Alloc(handle, failsafe);
+  if (!failsafe || handle->dptr != nullptr)
+    profiler_.OnAlloc(*handle);
 }
 
 void StorageImpl::Free(Storage::Handle handle) {
@@ -259,7 +257,7 @@ const std::string env_var_name(const char* dev_type, env_var_type type) {
 
 }  // namespace storage
 
-std::shared_ptr<Storage> Storage::_GetSharedRef() {
+const std::shared_ptr<Storage>& Storage::_GetSharedRef() {
 #ifdef __MXNET_JS__
   // dummy code needed for emscripten code to pass
   // do not know why, the new will be NULLPTR

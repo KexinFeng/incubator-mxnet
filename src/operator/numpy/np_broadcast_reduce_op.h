@@ -18,7 +18,6 @@
  */
 
 /*!
- *  Copyright (c) 2015 by Contributors
  * \file broadcast_reduce_op.h
  * \brief Function definition of broadcast and reduce operators
  */
@@ -70,6 +69,11 @@ struct NumpyReduceAxesParam : public dmlc::Parameter<NumpyReduceAxesParam> {
     DMLC_DECLARE_FIELD(initial)
         .set_default(dmlc::optional<double>())
         .describe("Starting value for the sum.");
+  }
+
+  bool operator==(const NumpyReduceAxesParam& other) const {
+    return this->axis == other.axis && this->dtype == other.dtype &&
+           this->keepdims == other.keepdims && this->initial == other.initial;
   }
 
   void SetAttrDict(std::unordered_map<std::string, std::string>* dict) {
@@ -551,7 +555,11 @@ void NumpyArgMinMaxCompute(const nnvm::NodeAttrs& attrs,
     axes = dmlc::optional<mxnet::Tuple<int>>(t);
   }
   TShape small;
-  small = NumpyReduceAxesShapeImpl(in.shape_, axes, true);
+  if (param.keepdims) {
+    small = outputs[0].shape_;
+  } else {
+    small = NumpyReduceAxesShapeImpl(in.shape_, axes, true);
+  }
   mxnet::TShape src_shape, dst_shape;
   BroadcastReduceShapeCompact(in.shape_, small, &src_shape, &dst_shape);
   const TBlob in_data = in.reshape(src_shape);
@@ -1271,4 +1279,18 @@ void NumpyReduceAxesNoDTypeBackward(const nnvm::NodeAttrs& attrs,
 
 }  // namespace op
 }  // namespace mxnet
+
+namespace std {
+template <>
+struct hash<mxnet::op::NumpyReduceAxesParam> {
+  size_t operator()(const mxnet::op::NumpyReduceAxesParam& val) {
+    size_t ret = 0;
+    ret        = dmlc::HashCombine(ret, val.axis);
+    ret        = dmlc::HashCombine(ret, val.dtype);
+    ret        = dmlc::HashCombine(ret, val.keepdims);
+    ret        = dmlc::HashCombine(ret, val.initial);
+    return ret;
+  }
+};
+}  // namespace std
 #endif  // MXNET_OPERATOR_NUMPY_NP_BROADCAST_REDUCE_OP_H_

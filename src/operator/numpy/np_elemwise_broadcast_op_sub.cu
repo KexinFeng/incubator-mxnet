@@ -18,7 +18,6 @@
  */
 
 /*!
- *  Copyright (c) 2019 by Contributors
  * \file np_elemwise_broadcast_op_sub.cu
  * \brief GPU Implementation of basic functions for elementwise binary broadcast subtract operator.
  */
@@ -29,10 +28,10 @@ namespace mxnet {
 namespace op {
 
 NNVM_REGISTER_OP(_npi_subtract)
-.set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCCompute{"sub"});
+    .set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCCompute{"sub"});
 
 NNVM_REGISTER_OP(_backward_npi_broadcast_sub)
-.set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCBackwardUseIn{"one", "negone"});
+    .set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCBackwardUseIn{"one", "negone"});
 
 }  // namespace op
 }  // namespace mxnet

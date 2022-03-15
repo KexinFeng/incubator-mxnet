@@ -18,7 +18,6 @@
  */
 
 /*!
- *  Copyright (c) 2015-2017 by Contributors
  * \file broadcast_reduce-inl.h
  * \brief CPU-specific Function definition of broadcast and reduce operators
  */
@@ -796,9 +795,9 @@ struct ReduceImplConfig {
         kernel_1.gridDim.x =
             std::min((unsigned int)kBaseGridNum, ceil_idiv<unsigned int>(N, kernel_1.blockDim.x));
         kernel_1.gridDim.y = std::min(kBaseGridNum, Mnext);
-        kernel_1.shMemSize = (kernel_1.blockDim.y > 1)
-                                 ? kernel_1.blockDim.x * kernel_1.blockDim.y * max_type_size * 2
-                                 : 0;
+        kernel_1.shMemSize = (kernel_1.blockDim.y > 1) ?
+                                 kernel_1.blockDim.x * kernel_1.blockDim.y * max_type_size * 2 :
+                                 0;
         // Maximum number of times we want TB to loop in M
         // Max size of M-block each TB can handle
         int maxMblock = kernel_1.blockDim.y * maxLoopPerTB;

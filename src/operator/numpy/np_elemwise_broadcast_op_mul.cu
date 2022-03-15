@@ -18,7 +18,6 @@
  */
 
 /*!
- *  Copyright (c) 2019 by Contributors
  * \file np_elemwise_broadcast_op_mul.cu
  * \brief GPU Implementation of basic functions for elementwise binary broadcast multiply operator.
  */
@@ -29,10 +28,10 @@ namespace mxnet {
 namespace op {
 
 NNVM_REGISTER_OP(_npi_multiply)
-.set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCCompute{"mul"});
+    .set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCCompute{"mul"});
 
 NNVM_REGISTER_OP(_backward_npi_broadcast_mul)
-.set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCBackwardUseIn{"right", "left"});
+    .set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCBackwardUseIn{"right", "left"});
 
 }  // namespace op
 }  // namespace mxnet

@@ -18,7 +18,6 @@
  */
 
 /*!
- *  Copyright (c) 2019 by Contributors
  * \file np_elemwise_broadcast_op_pow.cu
  * \brief GPU Implementation of basic functions for elementwise binary broadcast power operator.
  */
@@ -29,10 +28,11 @@ namespace mxnet {
 namespace op {
 
 NNVM_REGISTER_OP(_npi_power)
-.set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCCompute{"power"});
+    .set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCCompute{"power"});
 
 NNVM_REGISTER_OP(_backward_npi_broadcast_power)
-.set_attr<FCompute>("FCompute<gpu>", BinaryBroadcastRTCBackwardUseIn{"power_grad", "power_rgrad"});
+    .set_attr<FCompute>("FCompute<gpu>",
+                        BinaryBroadcastRTCBackwardUseIn{"power_grad", "power_rgrad"});
 
 }  // namespace op
 }  // namespace mxnet

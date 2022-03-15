@@ -18,7 +18,6 @@
  */
 
 /*!
- *  Copyright (c) 2020 by Contributors
  * \file batchify.cc
  * \brief Mini-batch data combination functions.
  */
@@ -167,7 +166,7 @@ class StackBatchify : public BatchifyFunction {
             // inputs[j][i].WaitToRead();
             DType* ptr = (*outputs)[i].data().dptr<DType>();
             auto asize = ashape.Size();
-            RunContext rctx{(*outputs)[i].ctx(), nullptr, nullptr, false};
+            RunContext rctx{(*outputs)[i].ctx(), nullptr, nullptr};
             auto dst = TBlob(ptr + asize * j, inputs[j][i].data().shape_, cpu::kDevMask, dtype, 0);
             mxnet::ndarray::Copy<cpu, cpu>(
                 inputs[j][i].data(), &dst, Context::CPU(), Context::CPU(), rctx);

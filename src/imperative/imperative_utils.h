@@ -16,20 +16,23 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+// The first two includes below need to be in unalphabetical for the miscellaneous CI to pass.
 #include <mxnet/operator.h>
 #include <mxnet/imperative.h>
 #include <nnvm/pass_functions.h>
-#include <utility>
+
 #include <algorithm>
-#include <vector>
 #include <map>
 #include <string>
-#include "./exec_pass.h"
+#include <utility>
+#include <vector>
+
 #include "../c_api/c_api_common.h"
-#include "../common/utils.h"
 #include "../common/exec_utils.h"
-#include "../operator/nn/mkldnn/mkldnn_base-inl.h"
+#include "../common/utils.h"
+#include "../operator/nn/dnnl/dnnl_base-inl.h"
 #include "../operator/operator_common.h"
+#include "./exec_pass.h"
 
 #ifndef MXNET_IMPERATIVE_IMPERATIVE_UTILS_H_
 #define MXNET_IMPERATIVE_IMPERATIVE_UTILS_H_
@@ -51,7 +54,7 @@ void InvalidateOutputs(const std::vector<T>* pArrs, const std::vector<OpReqType>
   auto arrs = *pArrs;
   for (size_t i = 0; i < arrs.size(); i++) {
     if (reqs[i] == kWriteTo || reqs[i] == kNullOp)
-      pntr(arrs[i])->InvalidateMKLDNNData();
+      pntr(arrs[i])->InvalidateDNNLData();
   }
 }
 
@@ -60,7 +63,7 @@ static inline void CreateDefaultInputs(const std::vector<NDArray>& arrs,
                                        std::vector<NDArray>* out_arrs) {
   out_arrs->clear();
   for (size_t i = 0; i < arrs.size(); ++i) {
-    if (arrs[i].IsMKLDNNData())
+    if (arrs[i].IsDNNLData())
       out_arrs->push_back(arrs[i].Reorder2Default());
     else
       out_arrs->push_back(arrs[i]);
@@ -77,7 +80,7 @@ static inline void CreateDefaultInputs(std::vector<NDArray>* pArrs) {
 #define INVALIDATE_OUTPUTS(outputs, req) InvalidateOutputs(&outputs, req)
 // kCrossDeviceCopy is used for `_copy_to` operator, which doesn't compute immediately in
 // its FCcomputeEx, but AsyncPush the copy operation to engine.
-// So for the case that A is holding mkldnn memory, and then copy A to B, and then copy B
+// So for the case that A is holding dnnl memory, and then copy A to B, and then copy B
 // back to A, we shouldn't invalidate outputs for copying B back to A, because at this time,
 // copying A to B may not happen, and will corrupt A's memory.
 #define INVALIDATE_OUTPUTS_COND(cond, outputs, req) \
@@ -85,12 +88,12 @@ static inline void CreateDefaultInputs(std::vector<NDArray>* pArrs) {
     INVALIDATE_OUTPUTS(outputs, req);               \
   }
 
-// add for mkldnn OP + no mkldnn OP
-#define CREATE_DEFAULT_INPUTS(cond, attrs, func_call)      \
-  if (cond) {                                              \
-    const auto is_mkldnn = Op::GetAttr<bool>("TIsMKLDNN"); \
-    if (!is_mkldnn.get(attrs.op, false))                   \
-      func_call;                                           \
+// add for dnnl OP + no dnnl OP
+#define CREATE_DEFAULT_INPUTS(cond, attrs, func_call)  \
+  if (cond) {                                          \
+    const auto is_dnnl = Op::GetAttr<bool>("TIsDNNL"); \
+    if (!is_dnnl.get(attrs.op, false))                 \
+      func_call;                                       \
   }
 
 #else
@@ -350,8 +353,8 @@ inline void SetDependency(const nnvm::NodeAttrs& attrs,
   if (rsc_req || rsc_ex_req) {
     int ntmp           = 0;
     auto resource_reqs = rsc_ex_req ? ftmp_resource_ex[attrs.op](
-                                          attrs, static_cast<int>(ctx.dev_mask()), dispatch_mode)
-                                    : ftmp_resource[attrs.op](attrs);
+                                          attrs, static_cast<int>(ctx.dev_mask()), dispatch_mode) :
+                                      ftmp_resource[attrs.op](attrs);
     for (const auto& req : resource_reqs) {
       switch (req.type) {
         case ResourceRequest::kTempSpace:
@@ -573,7 +576,7 @@ inline bool SetupDefaultBlobsOut(const std::vector<NDArray*>& src,
     const auto& nd = *src[i];
 
 #if MXNET_USE_ONEDNN == 1
-    if (req->at(i) == kWriteInplace && nd.IsMKLDNNData())
+    if (req->at(i) == kWriteInplace && nd.IsDNNLData())
       // If it's write inplace and the output array doesn't use the default
       // layout, we'll generate a temporary output array below, which means
       // the input array and the output array are no longer the same array.
@@ -586,7 +589,7 @@ inline bool SetupDefaultBlobsOut(const std::vector<NDArray*>& src,
       if (bufs != nullptr) {
         temp = bufs->at(i);
       } else if (kAddTo == req->at(i)) {
-        temp = nd.IsMKLDNNData() ? nd.Reorder2Default() : nd;
+        temp = nd.IsDNNLData() ? nd.Reorder2Default() : nd;
       } else {
         temp = NDArray(nd.shape(), nd.ctx(), true, nd.dtype());
       }
@@ -695,14 +698,11 @@ inline void PushFCompute(const FCompute& fn,
     fn(attrs, opctx, input_blobs, tmp_req, output_blobs);
     // post-fcompute fallback, cast to original storage type
     CastNonDefaultStorage(post_temp_src, post_temp_dst, opctx, is_gpu);
-    if (is_gpu && !rctx.is_bulk) {
-      rctx.get_stream<gpu>()->Wait();
-    }
     DerefInputOutputRelease(inputs, outputs);
   };
   if (CheckIfSkipEngine(attrs)) {
     // execute without engine
-    run(RunContext{ctx, nullptr, nullptr, false});
+    run(RunContext{ctx, nullptr, nullptr});
   } else {
     Engine::Get()->PushSync(
         run, ctx, read_vars, write_vars, FnProperty::kNormal, 0, op->name.c_str());
@@ -733,12 +733,9 @@ inline void PushFComputeEx(const FComputeEx& fn,
     INVALIDATE_OUTPUTS_COND(!cross_device_copy, outputsA, req);
     CREATE_DEFAULT_INPUTS(!cross_device_copy, attrs, CreateDefaultInputs(&inputsA));
     fn(attrs, opctx, inputsA, req, outputsA);
-    if (ctx.dev_mask() == gpu::kDevMask && exec_type == ExecType::kSync && !rctx.is_bulk) {
-      rctx.get_stream<gpu>()->Wait();
-    }
   };
   if (cross_device_copy || CheckIfSkipEngine(attrs)) {
-    run(RunContext{ctx, nullptr, nullptr, false});
+    run(RunContext{ctx, nullptr, nullptr});
   } else {
     CHECK(exec_type == ExecType::kSync);
     Engine::Get()->PushSync(
@@ -769,7 +766,9 @@ inline void PushOperator(const OpStatePtr& state,
 
   auto fcompute_ex = common::GetFCompute<FStatefulComputeEx>(op, "FStatefulComputeEx", ctx);
   if (fcompute_ex != nullptr && dispatch_mode == DispatchMode::kFComputeEx) {
-    const auto& run = [=](RunContext rctx, engine::CallbackOnComplete on_complete) {
+    const auto& run = [=](RunContext rctx,
+                          engine::CallbackOnStart on_start,
+                          engine::CallbackOnComplete on_complete) {
       OpContext opctx{need_grad, is_train, rctx, on_complete, requested};
       REDEFINE_INPUTS_OUTPUTS(inputs, outputs, inputsA, outputsA);
       INVALIDATE_OUTPUTS_COND(
@@ -777,26 +776,26 @@ inline void PushOperator(const OpStatePtr& state,
       CREATE_DEFAULT_INPUTS(exec_type != ExecType::kCrossDeviceCopy && op->name != "_CachedOp",
                             attrs,
                             CreateDefaultInputs(&inputsA));
+      on_start();
       fcompute_ex(state, opctx, inputsA, req, outputsA);
-      if (ctx.dev_mask() == gpu::kDevMask && exec_type == ExecType::kSync &&
-          rctx.get_stream<gpu>() && !rctx.is_bulk) {
-        rctx.get_stream<gpu>()->Wait();
-      }
     };
 
     // For operators with subgraphs, we need to invoke them in the main thread
     // instead of the threaded engine.
     if (exec_type == ExecType::kSubgraphExec || CheckIfSkipEngine(attrs)) {
-      RunContext rctx{ctx, nullptr, nullptr, false};
-      run(rctx, engine::CallbackOnComplete());
+      RunContext rctx{ctx, nullptr, nullptr};
+      run(rctx, engine::CallbackOnStart(), engine::CallbackOnComplete());
     } else if (exec_type == ExecType::kSync) {
-      Engine::Get()->PushSync([=](RunContext rctx) { run(rctx, engine::CallbackOnComplete()); },
-                              ctx,
-                              read_vars,
-                              write_vars,
-                              FnProperty::kNormal,
-                              0,
-                              op->name.c_str());
+      Engine::Get()->PushSync(
+          [=](RunContext rctx) {
+            run(rctx, engine::CallbackOnStart(), engine::CallbackOnComplete());
+          },
+          ctx,
+          read_vars,
+          write_vars,
+          FnProperty::kNormal,
+          0,
+          op->name.c_str());
     } else {
       CHECK(exec_type == ExecType::kAsync);
       Engine::Get()->PushAsync(
@@ -808,7 +807,9 @@ inline void PushOperator(const OpStatePtr& state,
         << "One of FStatefulCompute and FStatefulComputeEx must be registered "
         << "for stateful operator " << op->name;
 
-    const auto& run = [=](RunContext rctx, engine::CallbackOnComplete on_complete) {
+    const auto& run = [=](RunContext rctx,
+                          engine::CallbackOnStart on_start,
+                          engine::CallbackOnComplete on_complete) {
       OpContext opctx{need_grad, is_train, rctx, on_complete, requested};
 
       std::vector<TBlob> input_blobs, output_blobs;
@@ -840,23 +841,23 @@ inline void PushOperator(const OpStatePtr& state,
       fcompute(state, opctx, input_blobs, tmp_req, output_blobs);
       // post-fcompute fallback, cast to original storage type, if necessary
       CastNonDefaultStorage(post_temp_src, post_temp_dst, opctx, is_gpu);
-      if (is_gpu && exec_type == ExecType::kSync && rctx.get_stream<gpu>() && !rctx.is_bulk) {
-        rctx.get_stream<gpu>()->Wait();
-      }
       DerefInputOutputRelease(inputs, outputs);
     };
 
     if (exec_type == ExecType::kSubgraphExec || CheckIfSkipEngine(attrs)) {
-      RunContext rctx{ctx, nullptr, nullptr, false};
-      run(rctx, engine::CallbackOnComplete());
+      RunContext rctx{ctx, nullptr};
+      run(rctx, engine::CallbackOnStart(), engine::CallbackOnComplete());
     } else if (exec_type == ExecType::kSync) {
-      Engine::Get()->PushSync([=](RunContext rctx) { run(rctx, engine::CallbackOnComplete()); },
-                              ctx,
-                              read_vars,
-                              write_vars,
-                              FnProperty::kNormal,
-                              0,
-                              op->name.c_str());
+      Engine::Get()->PushSync(
+          [=](RunContext rctx) {
+            run(rctx, engine::CallbackOnStart(), engine::CallbackOnComplete());
+          },
+          ctx,
+          read_vars,
+          write_vars,
+          FnProperty::kNormal,
+          0,
+          op->name.c_str());
     } else {
       CHECK(exec_type == ExecType::kAsync);
       Engine::Get()->PushAsync(
@@ -1248,7 +1249,9 @@ inline Engine::OprHandle CreateEngineOp(
   bool is_async = execs.size() > 1 ? false : execs[0]->exec_type() == ExecType::kAsync;
 
   auto exec_fun = [execs, is_async, is_gpu](RunContext ctx,
+                                            Engine::CallbackOnStart on_start,
                                             Engine::CallbackOnComplete on_complete) {
+    on_start();
     if (is_async) {
       execs[0]->op_ctx.async_on_complete = on_complete;
     }
@@ -1257,10 +1260,7 @@ inline Engine::OprHandle CreateEngineOp(
     // call on complete only if it is async op
     if (!is_async) {
       if (is_gpu) {
-#if MXNET_USE_CUDA
-        // Wait GPU kernel to finish.
-        ctx.get_stream<gpu>()->Wait();
-#else
+#if !MXNET_USE_CUDA
         LOG(FATAL) << MXNET_GPU_NOT_ENABLED_ERROR;
 #endif
       }
@@ -1318,9 +1318,9 @@ inline void CreateEngineOpSeg(const nnvm::IndexedGraph& idx,
     const auto& inode = idx[nid];
     opr_names += op_name;
     opr_names += "{name=" + inode.source->attrs.name + ";";
-    const std::unordered_map<std::string, std::string> &dict = inode.source->attrs.dict;
-    auto num_dict_entries = dict.size();
-    for (auto &k : dict) {
+    const std::unordered_map<std::string, std::string>& dict = inode.source->attrs.dict;
+    auto num_dict_entries                                    = dict.size();
+    for (auto& k : dict) {
       opr_names += k.first + "=" + k.second;
       if (--num_dict_entries != 0)
         opr_names += ";";

@@ -18,7 +18,6 @@
  */
 
 /*!
- * Copyright (c) 2019 by Contributors
  * \file np_power_op.cc
  * \brief Operator for numpy sampling from power distributions
  */
@@ -49,9 +48,9 @@ NNVM_REGISTER_OP(_npi_powerd)
                                        if (param.a.has_value()) {
                                          num_inputs -= 1;
                                        }
-                                       return (num_inputs == 0)
-                                                  ? std::vector<std::string>()
-                                                  : std::vector<std::string>{"input1"};
+                                       return (num_inputs == 0) ?
+                                                  std::vector<std::string>() :
+                                                  std::vector<std::string>{"input1"};
                                      })
     .set_attr_parser(ParamParser<NumpyPowerParam>)
     .set_attr<mxnet::FInferShape>("FInferShape", UnaryDistOpShape<NumpyPowerParam>)

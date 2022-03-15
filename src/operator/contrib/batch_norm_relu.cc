@@ -18,7 +18,6 @@
  */
 
 /*!
- * Copyright (c) 2020 by Contributors
  * \file batch_norm_relu.cc
  * \brief
  * \author Xinyu Chen
@@ -29,7 +28,7 @@
 #include "../elemwise_op_common.h"
 #include "../operator_common.h"
 #if MXNET_USE_ONEDNN == 1
-#include "../nn/mkldnn/mkldnn_batch_norm-inl.h"
+#include "../nn/dnnl/dnnl_batch_norm-inl.h"
 #endif
 
 namespace mxnet {
@@ -131,7 +130,7 @@ static bool BatchNormWithReLUType(const nnvm::NodeAttrs& attrs,
 }
 
 #if MXNET_USE_ONEDNN == 1
-static inline bool SupportMKLDNNBNReLU(const NDArray& input, const BatchNormParam& param) {
+static inline bool SupportDNNLBNReLU(const NDArray& input, const BatchNormParam& param) {
   if (mxnet::op::batchnorm::disable_mkl)
     return false;
   const mxnet::TShape shape = input.shape();
@@ -140,7 +139,7 @@ static inline bool SupportMKLDNNBNReLU(const NDArray& input, const BatchNormPara
     return false;
   const int dtype = input.dtype();
   return (dtype == mshadow::kFloat32 || dtype == mshadow::kBfloat16) &&
-         SupportStorageMKLDNN(input.storage_type());
+         SupportStorageDNNL(input.storage_type());
 }
 
 void BatchNormWithReLUComputeExCPU(const nnvm::NodeAttrs& attrs,
@@ -150,16 +149,15 @@ void BatchNormWithReLUComputeExCPU(const nnvm::NodeAttrs& attrs,
                                    const std::vector<NDArray>& outputs) {
   CHECK_EQ(inputs.size(), 5U);
   const BatchNormParam& param = nnvm::get<BatchNormParam>(attrs.parsed);
-  bool fuse_relu              = true;
-  if (SupportMKLDNNBNReLU(inputs[0], param)) {
+  if (SupportDNNLBNReLU(inputs[0], param)) {
     CHECK_GT(outputs.size(), 3U);
-    MKLDNN_OPCHECK_INIT(false, outputs.size(), inputs, outputs);
-    MKLDNN_REAL_TYPE_SWITCH(inputs[0].dtype(), DTYPE, {
-      MKLDNNBatchNormForward<DTYPE>(attrs, ctx, inputs, req, outputs, fuse_relu);
+    DNNL_OPCHECK_INIT(false, outputs.size(), inputs, outputs);
+    DNNL_REAL_TYPE_SWITCH(inputs[0].dtype(), DTYPE, {
+      DNNLRun(DNNLBatchNormForward<DTYPE, /*fuse_relu*/ true>, attrs, ctx, inputs, req, outputs);
     });
     return;
   }
-  LOG(FATAL) << "BatchNormWithReLU operator only supports MKL-DNN Backend.";
+  LOG(FATAL) << "BatchNormWithReLU operator only supports oneDNN Backend.";
 }
 
 void BatchNormWithReLUGradComputeExCPU(const nnvm::NodeAttrs& attrs,
@@ -168,14 +166,13 @@ void BatchNormWithReLUGradComputeExCPU(const nnvm::NodeAttrs& attrs,
                                        const std::vector<OpReqType>& req,
                                        const std::vector<NDArray>& outputs) {
   const BatchNormParam& param = nnvm::get<BatchNormParam>(attrs.parsed);
-  bool fuse_relu              = true;
-  if (SupportMKLDNNBNReLU(inputs[0], param)) {
+  if (SupportDNNLBNReLU(inputs[0], param)) {
     CHECK_EQ(inputs.size(), 9U);
-    MKLDNN_OPCHECK_INIT(true, outputs.size(), inputs, outputs);
-    MKLDNNBatchNormBackward<float>(attrs, ctx, inputs, req, outputs, fuse_relu);
+    DNNL_OPCHECK_INIT(true, outputs.size(), inputs, outputs);
+    DNNLRun(DNNLBatchNormBackward<float, /*fuse_relu*/ true>, attrs, ctx, inputs, req, outputs);
     return;
   }
-  LOG(FATAL) << "BatchNormWithReLU operator only supports MKL-DNN Backend.";
+  LOG(FATAL) << "BatchNormWithReLU operator only supports oneDNN Backend.";
 }
 #endif
 
@@ -189,9 +186,9 @@ static inline bool BatchNormWithReLUStorageType(const nnvm::NodeAttrs& attrs,
   bool dispatched = false;
 #if MXNET_USE_ONEDNN == 1
   if (!dispatched) {
-    dispatched = MKLDNNStorageType(attrs, dev_mask, true, dispatch_mode, in_attrs, out_attrs);
+    dispatched = DNNLStorageType(attrs, dev_mask, true, dispatch_mode, in_attrs, out_attrs);
   }
-  if (!MKLDNNEnvSet()) {
+  if (!DNNLEnvSet()) {
     *dispatch_mode = DispatchMode::kFComputeFallback;
   }
 #else
@@ -289,7 +286,7 @@ An extented operator of Batch normalization which can fuse ReLU activation.
 #endif
     .set_attr<nnvm::FGradient>("FGradient", BatchNormWithReLUGrad)
 #if MXNET_USE_ONEDNN == 1
-    .set_attr<bool>("TIsMKLDNN", true)
+    .set_attr<bool>("TIsDNNL", true)
     .set_attr<FResourceRequest>("FResourceRequest",
                                 [](const NodeAttrs& n) {
                                   return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
@@ -323,7 +320,7 @@ NNVM_REGISTER_OP(_backward_contrib_BatchNormWithReLU)
                                 [](const NodeAttrs& n) {
                                   return std::vector<ResourceRequest>{ResourceRequest::kTempSpace};
                                 })
-    .set_attr<bool>("TIsMKLDNN", true)
+    .set_attr<bool>("TIsDNNL", true)
     .set_attr<FComputeEx>("FComputeEx<cpu>", BatchNormWithReLUGradComputeExCPU)
 #endif
     .set_attr_parser(ParamParser<BatchNormParam>);

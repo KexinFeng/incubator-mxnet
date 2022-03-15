@@ -18,7 +18,6 @@
  */
 
 /*!
- * Copyright (c) 2015 by Contributors
  * \file storage_manager.h
  * \brief Storage manager.
  */
@@ -40,8 +39,9 @@ class StorageManager {
   /*!
    * \brief Allocation.
    * \param handle Handle struct.
+   * \param failsafe Return a handle with a null dptr if out of memory, rather than exit.
    */
-  virtual void Alloc(Storage::Handle* handle) = 0;
+  virtual void Alloc(Storage::Handle* handle, bool failsafe = false) = 0;
   /*!
    * \brief Deallocation.
    * \param handle Handle struct.

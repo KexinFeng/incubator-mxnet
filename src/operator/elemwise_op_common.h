@@ -18,7 +18,6 @@
  */
 
 /*!
- * Copyright (c) 2016 by Contributors
  * \file elemwise_op_common.h
  * \brief common function used for broadcasting and reducing
  * \author Xingjian Shi
@@ -37,6 +36,7 @@
 #include <utility>
 #include "./operator_common.h"
 #include "./mxnet_op.h"
+#include "../common/alm.h"
 
 namespace mxnet {
 namespace op {
@@ -45,7 +45,7 @@ namespace op {
  *         It infers output stypes the same as input stypes when input stypes are the same
  *  \tparam cpu_only whether fcompute_ex can only be dispatched on cpu context
  *  \tparam rsp whether row sparse stype is supported
- *  \tparam rsp whether csr stype is supported
+ *  \tparam csr whether compressed sparse row stype is supported
  */
 template <bool cpu_only, bool rsp, bool csr>
 inline bool ElemwiseStorageAttr(const nnvm::NodeAttrs& attrs,
@@ -94,7 +94,7 @@ inline bool ElemwiseStorageAttr(const nnvm::NodeAttrs& attrs,
  *  \tparam n_in the number of outputs
  *  \tparam cpu_only whether fcompute_ex can only be dispatched on cpu context
  *  \tparam rsp whether row sparse stype is supported
- *  \tparam rsp whether csr stype is supported
+ *  \tparam csr whether compressed sparse row stype is supported
  */
 template <index_t n_in, index_t n_out, bool cpu_only, bool rsp, bool csr>
 inline bool ElemwiseStorageType(const nnvm::NodeAttrs& attrs,
@@ -196,6 +196,15 @@ inline bool ElemwiseType(const nnvm::NodeAttrs& attrs,
   }
   return ElemwiseAttr<int, type_is_none, type_assign, true, type_string>(
       attrs, in_attrs, out_attrs, -1);
+}
+
+inline bool ElemwiseChangeLayout(nnvm::NodeAttrs* attrs,
+                                 mshadow::LayoutFlag targetLayout,
+                                 std::vector<alm::Transpose>* inpTransposes,
+                                 std::vector<alm::Transpose>* outTransposes) {
+  CHECK_EQ(targetLayout, mshadow::kUNKNOWN);
+  outTransposes->assign(attrs->op->num_outputs, alm::FactorCommonTranspose(inpTransposes));
+  return false;
 }
 
 // Special case of ElemwiseType. Constrains dtype to integer types
