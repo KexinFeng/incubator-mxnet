@@ -635,7 +635,6 @@ std::vector<NDArray*> Imperative::Backward(const std::vector<NDArray*>& outputs,
     ref_count[eid] = 1;
   }
 
-
   // Assign context
   auto vctx = PlaceDevice(idx);
 
