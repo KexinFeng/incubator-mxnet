@@ -417,7 +417,7 @@ void SgDNNLFCOp::Forward(const OpContext& ctx,
       const auto def_weight_mem = static_cast<const dnnl::memory*>(weight.GetDNNLData());
       if (def_weight_mem->get_desc() != fwd_->fwd_pd.weights_desc()) {
         auto weight_desc       = fwd_->fwd_pd.weights_desc();
-        cached_weight_         = NDArray(weight_desc);
+        cached_weight_         = NDArray(&weight_desc);
         auto cached_weight_mem = static_cast<const dnnl::memory*>(cached_weight_.GetDNNLData());
         std::unordered_map<int, dnnl::memory> args(
             {{DNNL_ARG_FROM, *def_weight_mem}, {DNNL_ARG_TO, *cached_weight_mem}});
@@ -442,7 +442,7 @@ void SgDNNLFCOp::Forward(const OpContext& ctx,
     const auto& out_mem_desc = output_mem->get_desc();
     auto dst_mem_desc        = fwd_->fwd_pd.dst_desc();
     if (out_mem_desc != dst_mem_desc) {
-      auto tmp_out_mem            = output.GetDNNLDataReorder(dst_mem_desc);
+      auto tmp_out_mem            = output.GetDNNLDataReorder(&dst_mem_desc);
       dst_mem_desc.data.data_type = out_mem_desc.data.data_type;
       dnnl_mem_ptr new_out_mem(new dnnl::memory(
           dst_mem_desc, CpuEngine::Get()->get_engine(), output_mem->get_data_handle()));
@@ -610,6 +610,10 @@ static bool SgDNNLFCInferType(const nnvm::NodeAttrs& attrs,
                               full_param.dnnl_param.channel_wise_quantize;
     const FCInputIndex idx(full_param);
 
+    if (in_types->at(idx.data) == mshadow::kBfloat16) {
+      return false;
+    }
+
     CHECK(in_types->at(idx.data) == mshadow::kInt8 || in_types->at(idx.data) == mshadow::kUint8)
         << "QuantizedFullyConnected  data input only supports int8/uint8, while "
         << in_types->at(idx.data) << " is given.";
@@ -662,7 +666,11 @@ static bool SgDNNLFCInferType(const nnvm::NodeAttrs& attrs,
     }
     return true;
   } else {
-    return DefaultSubgraphOpType(attrs, in_types, out_types);
+    bool result = DefaultSubgraphOpType(attrs, in_types, out_types);
+    if (full_param.dnnl_param.amp_out_dtype.has_value()) {
+      (*out_types)[0] = full_param.dnnl_param.amp_out_dtype.value();
+    }
+    return result;
   }
 }
 

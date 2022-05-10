@@ -165,7 +165,7 @@ dnnl_output_t CreateDNNLMem(const NDArray& out_arr,
     auto tmp = TmpMemMgr::Get()->Alloc(desc);
     return dnnl_output_t(OutDataOp::AddBack, tmp);
   } else if (kWriteInplace == req && in_arr != nullptr && CanWriteTo(out_arr, *in_arr, desc)) {
-    dnnl::memory* mem = const_cast<NDArray&>(out_arr).CreateDNNLData(desc);
+    dnnl::memory* mem = const_cast<NDArray&>(out_arr).CreateDNNLData(&desc);
     // mem is nullptr if out_arr is view and desc is DNNL format.
     // need to Reorder2Default before calling CreateDNNLMem
     CHECK(mem != nullptr);
@@ -174,7 +174,7 @@ dnnl_output_t CreateDNNLMem(const NDArray& out_arr,
     auto tmp = TmpMemMgr::Get()->Alloc(desc);
     return dnnl_output_t(OutDataOp::CopyBack, tmp);
   } else if (kWriteTo == req) {
-    dnnl::memory* mem = const_cast<NDArray&>(out_arr).CreateDNNLData(desc);
+    dnnl::memory* mem = const_cast<NDArray&>(out_arr).CreateDNNLData(&desc);
     if (nullptr == mem) {
       auto tmp = TmpMemMgr::Get()->Alloc(desc);
       return dnnl_output_t(OutDataOp::CopyBack, tmp);
@@ -197,7 +197,7 @@ dnnl_output_t CreateDNNLWeightGrad(const NDArray& out_arr,
   } else {
     dnnl::memory* mem = nullptr;
     if (IsDefaultFormat(desc)) {
-      mem = const_cast<NDArray&>(out_arr).CreateDNNLData(desc);
+      mem = const_cast<NDArray&>(out_arr).CreateDNNLData(&desc);
     }
     if (mem == nullptr) {
       auto tmp = TmpMemMgr::Get()->Alloc(desc);
@@ -214,7 +214,8 @@ void CommitOutput(const NDArray& arr, const dnnl_output_t& res) {
   } else if (res.first == AddBack) {
     auto res_memory = res.second;
     auto target_pd  = arr.GetDNNLData()->get_desc();
-    auto mem        = arr.GetDNNLData(res.second->get_desc());
+    auto res_desc   = res.second->get_desc();
+    auto mem        = arr.GetDNNLData(&res_desc);
     if (mem == nullptr) {
       auto tmp_memory = TmpMemMgr::Get()->Alloc(target_pd);
       DNNLMemoryCopy(*res_memory, tmp_memory);
@@ -272,19 +273,19 @@ const dnnl::memory* GetWeights(const NDArray& arr, int num_groups) {
     LOG(FATAL) << "The weight array has an unsupported number of dimensions";
   }
   const auto md = dnnl::memory::desc{tz, type, format_tag};
-  return arr.GetDNNLData(md);
+  return arr.GetDNNLData(&md);
 }
 
 const dnnl::memory* GetWeights(const NDArray& arr,
                                const dnnl::memory::desc& target_desc,
                                int num_groups) {
-  const dnnl::memory* mem = arr.GetDNNLData(target_desc);
+  const dnnl::memory* mem = arr.GetDNNLData(&target_desc);
   // If the weight array already uses the target layout, simply return it directly.
   if (mem)
     return mem;
   mem = GetWeights(arr, num_groups);
   if (mem == nullptr)
-    mem = arr.GetDNNLDataReorder(target_desc);
+    mem = arr.GetDNNLDataReorder(&target_desc);
   if (mem->get_desc() == target_desc)
     return mem;
 
@@ -329,6 +330,50 @@ dnnl_format_tag_t GetDefaultFormat(int num_dims) {
       return dnnl_abcde;
     case 6:
       return dnnl_abcdef;
+    case 7:
+      return dnnl_abcdefg;
+    case 8:
+      return dnnl_abcdefgh;
+    case 9:
+      return dnnl_abcdefghi;
+    case 10:
+      return dnnl_abcdefghij;
+    case 11:
+      return dnnl_abcdefghijk;
+    case 12:
+      return dnnl_abcdefghijkl;
+    default:
+      LOG(FATAL) << "Not implemented dimension (" << num_dims << ") for oneDNN";
+      return dnnl_format_tag_undef;
+  }
+}
+
+dnnl_format_tag_t GetPermutedFormat(int num_dims) {
+  switch (num_dims) {
+    case 1:
+      return dnnl_a;
+    case 2:
+      return dnnl_ba;
+    case 3:
+      return dnnl_acb;
+    case 4:
+      return dnnl_abdc;
+    case 5:
+      return dnnl_abced;
+    case 6:
+      return dnnl_abcdfe;
+    case 7:
+      return dnnl_abcdegf;
+    case 8:
+      return dnnl_abcdefhg;
+    case 9:
+      return dnnl_abcdefgih;
+    case 10:
+      return dnnl_abcdefghji;
+    case 11:
+      return dnnl_abcdefghikj;
+    case 12:
+      return dnnl_abcdefghijlk;
     default:
       LOG(FATAL) << "Not implemented dimension (" << num_dims << ") for oneDNN";
       return dnnl_format_tag_undef;

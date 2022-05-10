@@ -101,7 +101,7 @@ static void VerifyDefMem(const dnnl::memory& mem) {
 
 TEST(DNNL_UTIL_FUNC, MemFormat) {
   // Check whether the number of format is correct.
-  CHECK_EQ(dnnl_format_tag_last, 503);
+  CHECK_EQ(dnnl_format_tag_last, 514);
   CHECK_EQ(dnnl_nchw, 5);
   CHECK_EQ(dnnl_oihw, 5);
 }
@@ -139,7 +139,7 @@ TEST(DNNL_NDArray, GetDataReorder) {
     InitDefaultArray(&arr);
     for (auto md : mds) {
       if (s.Size() == md.get_size() / sizeof(mshadow::default_real_t)) {
-        const dnnl::memory* mem = arr.GetDNNLDataReorder(md);
+        const dnnl::memory* mem = arr.GetDNNLDataReorder(&md);
         printf("reorder from (");
         for (size_t i = 0; i < s.ndim(); i++)
           printf("%ld, ", s[i]);
@@ -171,7 +171,7 @@ TEST(DNNL_NDArray, GetDataReorder) {
         InitDNNLArray(&arr, md);
         for (auto to_md : mds) {
           if (to_md.get_size() / sizeof(mshadow::default_real_t) == s.Size()) {
-            const dnnl::memory* mem = arr.GetDNNLDataReorder(to_md);
+            const dnnl::memory* mem = arr.GetDNNLDataReorder(&to_md);
             printf("reorder from (");
             for (size_t i = 0; i < s.ndim(); i++)
               printf("%ld, ", s[i]);
